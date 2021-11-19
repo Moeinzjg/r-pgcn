@@ -17,11 +17,11 @@ def main(args):
         
     # ---------------------- prepare data loader ------------------------------- #
     
-    dataset_train = pmr.datasets(args.dataset, args.data_dir, "train2017", train=True)
+    dataset_train = pmr.datasets(args.dataset, args.data_dir, "train", train=True)
     indices = torch.randperm(len(dataset_train)).tolist()
-    d_train = torch.utils.data.Subset(dataset_train, indices)
+    d_train = torch.utils.data.Subset(dataset_train, indices[:int(0.8 * len(dataset_train))])
     
-    d_test = pmr.datasets(args.dataset, args.data_dir, "val2017", train=True) # set train=True for eval
+    d_test = pmr.datasets(args.dataset, args.data_dir, "val", train=True) # set train=True for eval
         
     args.warmup_iters = max(1000, len(d_train))
     
@@ -65,7 +65,7 @@ def main(args):
         A = time.time() - A
         
         B = time.time()
-        eval_output, iter_eval = pmr.evaluate(model, d_test, device, args)
+        eval_output, iter_eval = pmr.evaluate(model, d_test, device, args)  # TODO: uncomment these lines and create a test dataset for evaluation during trianing
         B = time.time() - B
 
         trained_epoch = epoch + 1
