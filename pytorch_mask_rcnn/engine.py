@@ -10,7 +10,7 @@ except:
     pass
 
 
-def train_one_epoch(model, optimizer, data_loader, device, epoch, args):
+def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
     for p in optimizer.param_groups:
         p["lr"] = args.lr_epoch
 
@@ -36,7 +36,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args):
         losses = model(image, target)
         total_loss = sum(losses.values())
         m_m.update(time.time() - S)
-            
+
         S = time.time()
         total_loss.backward()
         b_m.update(time.time() - S)
@@ -46,6 +46,12 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args):
 
         if num_iters % args.print_freq == 0:
             print("{}\t".format(num_iters), "\t".join("{:.3f}".format(l.item()) for l in losses.values()))
+
+            # log into tensorboard
+            for k in losses.keys():
+                writer.add_scalar(k, losses[k], num_iters) 
+            writer.add_scalar('total_loss', total_loss, num_iters)   
+
 
         t_m.update(time.time() - T)
         if i >= iters - 1:
@@ -83,8 +89,8 @@ def evaluate(model, data_loader, device, args, generate=True):
     return output, iter_eval
     
     
-# generate results file   
-@torch.no_grad()   
+# generate results file
+@torch.no_grad()
 def generate_results(model, data_loader, device, args):
     iters = len(data_loader) if args.iters < 0 else args.iters
         
@@ -103,7 +109,7 @@ def generate_results(model, data_loader, device, args):
         #torch.cuda.synchronize()
         output = model(image)
         m_m.update(time.time() - S)
-        
+
         prediction = {target["image_id"].item(): {k: v.cpu() for k, v in output.items()}}
         coco_results.extend(prepare_for_coco(prediction))
 

@@ -5,6 +5,7 @@ import re
 import time
 
 import torch
+from tensorboardX import SummaryWriter
 
 import pytorch_mask_rcnn as pmr
     
@@ -19,9 +20,9 @@ def main(args):
     
     dataset_train = pmr.datasets(args.dataset, args.data_dir, "train", train=True)
     indices = torch.randperm(len(dataset_train)).tolist()
-    d_train = torch.utils.data.Subset(dataset_train, indices[:int(0.8 * len(dataset_train))])
+    d_train = torch.utils.data.Subset(dataset_train, indices)
     
-    d_test = pmr.datasets(args.dataset, args.data_dir, "val", train=True) # set train=True for eval
+    d_test = pmr.datasets(args.dataset, args.data_dir, "val", train=True)  # set train=True for eval
         
     args.warmup_iters = max(1000, len(d_train))
     
@@ -29,7 +30,7 @@ def main(args):
 
     print(args)
     num_classes = max(d_train.dataset.classes) + 1 # including background class
-    model = pmr.maskrcnn_resnet50(True, num_classes).to(device)
+    model = pmr.maskrcnn_resnet50(False, num_classes).to(device)  # TODO: enable pretrained again
     
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(
@@ -43,7 +44,7 @@ def main(args):
     ckpts = glob.glob(prefix + "-*" + ext)
     ckpts.sort(key=lambda x: int(re.search(r"-(\d+){}".format(ext), os.path.split(x)[1]).group(1)))
     if ckpts:
-        checkpoint = torch.load(ckpts[-1], map_location=device) # load last checkpoint
+        checkpoint = torch.load(ckpts[-1], map_location=device)  # load last checkpoint
         model.load_state_dict(checkpoint["model"])
         optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epochs"]
@@ -54,18 +55,20 @@ def main(args):
     print("\nalready trained: {} epochs; to {} epochs".format(start_epoch, args.epochs))
     
     # ------------------------------- train ------------------------------------ #
-        
+    log_dir = 'maskrcnn_results'
+    writer = SummaryWriter(os.path.join(log_dir, 'logs', 'train'))
+    # val_writer = SummaryWriter(os.path.join(log_dir, 'logs', 'train_val'))
+    
     for epoch in range(start_epoch, args.epochs):
         print("\nepoch: {}".format(epoch + 1))
             
         A = time.time()
         args.lr_epoch = lr_lambda(epoch) * args.lr
         print("lr_epoch: {:.5f}, factor: {:.5f}".format(args.lr_epoch, lr_lambda(epoch)))
-        iter_train = pmr.train_one_epoch(model, optimizer, d_train, device, epoch, args)
+        iter_train = pmr.train_one_epoch(model, optimizer, d_train, device, epoch, args, writer)
         A = time.time() - A
-        
         B = time.time()
-        eval_output, iter_eval = pmr.evaluate(model, d_test, device, args)  # TODO: uncomment these lines and create a test dataset for evaluation during trianing
+        eval_output, iter_eval = pmr.evaluate(model, d_test, device, args)  # TODO: add evaluation metrics for edge/vertex/polygon
         B = time.time() - B
 
         trained_epoch = epoch + 1
@@ -108,7 +111,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight-decay", type=float, default=0.0001)
     
     parser.add_argument("--epochs", type=int, default=3)
-    parser.add_argument("--iters", type=int, default=10, help="max iters per epoch, -1 denotes auto")
+    parser.add_argument("--iters", type=int, default=-1, help="max iters per epoch, -1 denotes auto")
     parser.add_argument("--print-freq", type=int, default=100, help="frequency of printing losses")
     args = parser.parse_args()
     

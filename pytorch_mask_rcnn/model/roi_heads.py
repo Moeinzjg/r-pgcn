@@ -31,7 +31,33 @@ def maskrcnn_loss(mask_logit, proposal, matched_idx, label, gt_mask):
     idx = torch.arange(label.shape[0], device=label.device)
     mask_loss = F.binary_cross_entropy_with_logits(mask_logit[idx, label], mask_target)
     return mask_loss
-    
+
+
+def edgercnn_loss(edge_logit, proposal, matched_idx, label, gt_edge):
+    matched_idx = matched_idx[:, None].to(proposal)
+    roi = torch.cat((matched_idx, proposal), dim=1)
+            
+    M = edge_logit.shape[-1]
+    gt_edge = gt_edge[:, None].to(roi)
+    edge_target = roi_align(gt_edge, roi, 1., M, M, -1)[:, 0]
+
+    idx = torch.arange(label.shape[0], device=label.device)
+    edge_loss = F.binary_cross_entropy_with_logits(edge_logit[idx, label], edge_target, pos_weight=torch.Tensor([8.0]).to(idx.device))
+    return edge_loss
+
+
+def vertexrcnn_loss(vertex_logit, proposal, matched_idx, label, gt_vertex):
+    matched_idx = matched_idx[:, None].to(proposal)
+    roi = torch.cat((matched_idx, proposal), dim=1)
+            
+    M = vertex_logit.shape[-1]
+    gt_vertex = gt_vertex[:, None].to(roi)
+    vertex_target = roi_align(gt_vertex, roi, 1., M, M, -1)[:, 0]
+
+    idx = torch.arange(label.shape[0], device=label.device)
+    vertex_loss = F.binary_cross_entropy_with_logits(vertex_logit[idx, label], vertex_target, pos_weight=torch.Tensor([40.0]).to(idx.device))
+    return vertex_loss
+
 
 class RoIHeads(nn.Module):
     def __init__(self, box_roi_pool, box_predictor,
@@ -42,19 +68,19 @@ class RoIHeads(nn.Module):
         super().__init__()
         self.box_roi_pool = box_roi_pool
         self.box_predictor = box_predictor
-        
+
         self.mask_roi_pool = None
         self.mask_predictor = None
-        
+
         self.proposal_matcher = Matcher(fg_iou_thresh, bg_iou_thresh, allow_low_quality_matches=False)
         self.fg_bg_sampler = BalancedPositiveNegativeSampler(num_samples, positive_fraction)
         self.box_coder = BoxCoder(reg_weights)
-        
+
         self.score_thresh = score_thresh
         self.nms_thresh = nms_thresh
         self.num_detections = num_detections
         self.min_size = 1
-        
+
     def has_mask(self):
         if self.mask_roi_pool is None:
             return False
@@ -142,28 +168,40 @@ class RoIHeads(nn.Module):
                 '''
                 
                 if mask_proposal.shape[0] == 0:
-                    losses.update(dict(roi_mask_loss=torch.tensor(0)))
+                    losses.update(dict(roi_mask_loss=torch.tensor(0), roi_edge_loss=torch.tensor(0), roi_vertex_loss=torch.tensor(0)))
                     return result, losses
             else:
                 mask_proposal = result['boxes']
                 
                 if mask_proposal.shape[0] == 0:
-                    result.update(dict(masks=torch.empty((0, 28, 28))))
+                    result.update(dict(masks=torch.empty((0, 28, 28)), edges=torch.empty((0, 28, 28)), vertices=torch.empty((0, 28, 28))))
                     return result, losses
                 
             mask_feature = self.mask_roi_pool(feature, mask_proposal, image_shape)
             mask_logit = self.mask_predictor(mask_feature)
+            edge_logit = self.edge_predictor(mask_feature)
+            vertex_logit = self.vertex_predictor(mask_feature)
             
             if self.training:
                 gt_mask = target['masks']
+                gt_edge = target['edges']
+                gt_vertex = target['vertices']
+
                 mask_loss = maskrcnn_loss(mask_logit, mask_proposal, pos_matched_idx, mask_label, gt_mask)
-                losses.update(dict(roi_mask_loss=mask_loss))
+                edge_loss = edgercnn_loss(edge_logit, mask_proposal, pos_matched_idx, mask_label, gt_edge)
+                vertex_loss = vertexrcnn_loss(vertex_logit, mask_proposal, pos_matched_idx, mask_label, gt_vertex)
+                losses.update(dict(roi_mask_loss=mask_loss, roi_edge_loss=edge_loss, roi_vertex_loss=vertex_loss))
             else:
                 label = result['labels']
                 idx = torch.arange(label.shape[0], device=label.device)
                 mask_logit = mask_logit[idx, label]
+                edge_logit = edge_logit[idx, label]
+                vertex_logit = vertex_logit[idx, label]
 
                 mask_prob = mask_logit.sigmoid()
-                result.update(dict(masks=mask_prob))
-                
+                edge_prob = edge_logit.sigmoid()
+                vertex_prob = vertex_logit.sigmoid()
+
+                result.update(dict(masks=mask_prob, edges=edge_prob, vertices=vertex_prob))
+
         return result, losses

@@ -89,7 +89,7 @@ class GenericMask:
         res = res[-2]
         res = [x.flatten() for x in res]
         res = [x + 0.5 for x in res if len(x) >= 6]
-        return res
+        return res, True
 
     def area(self):
         return self.mask.sum()
@@ -101,6 +101,46 @@ class GenericMask:
         bbox[2] += bbox[0]
         bbox[3] += bbox[1]
         return bbox
+
+
+class GenericEdge:
+    def __init__(self, edge, height, width):
+        self._edge = None
+        self.height = height
+        self.width = width
+
+        self.edge = edge.astype("uint8")  # ndarray, shape=(h, w)
+        self.polygons = self.edge_to_polygons(self.edge)
+
+    def edge_to_polygons(self, edge):  # TODO: draw pure edges without extracting contours
+        edge = np.ascontiguousarray(edge)  # some versions of cv2 does not support incontiguous arr
+        # res = cv2.findContours(edge, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+        edge_points = np.nonzero(edge)
+        res = np.vstack(edge_points)
+        if res.shape[1] == 0:  # empty mask
+            return [], False
+
+        return res, True
+
+
+class GenericVertex:
+    def __init__(self, vertex, height, width):
+        self._vertex = None
+        self.height = height
+        self.width = width
+
+        self.vertex = vertex.astype("uint8")  # ndarray, shape=(h, w)
+        self.points = self.vertex_mask_to_points(self.vertex)
+
+    def vertex_mask_to_points(self, vertex):
+        vertex = np.ascontiguousarray(vertex)  # some versions of cv2 does not support incontiguous arr
+        ver = np.nonzero(vertex)
+        res = np.vstack(ver)
+        # res = cv2.findContours(vertex, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+        if res.shape[1] == 0:  # empty mask
+            return [], False
+
+        return res, True
 
 
 def _create_text_labels(classes, scores, class_names):
@@ -185,7 +225,9 @@ class Visualizer:
         scores = predictions["scores"] if "scores" in predictions else None
         classes = predictions["labels"] if "labels" in predictions else None
         masks = predictions["masks"] if "masks" in predictions else None
-        
+        edges = predictions["edges"] if "edges" in predictions else None
+        vertices = predictions["vertices"] if "vertices" in predictions else None
+
         labels = _create_text_labels(classes.tolist(), scores, class_names)
 
         if self._instance_mode == ColorMode.SEGMENTATION and thing_colors is not None:
@@ -200,18 +242,21 @@ class Visualizer:
         self.overlay_instances(
             masks=masks,
             boxes=boxes,
+            edges=edges,
+            vertices=vertices,
             labels=labels,
             assigned_colors=colors,
             alpha=alpha,
         )
         return self.output
 
-    def overlay_instances(self, boxes=None, labels=None, masks=None, 
-                          assigned_colors=None, alpha=0.5):
+    def overlay_instances(self, boxes=None, labels=None, masks=None, edges=None,
+                          vertices=None, assigned_colors=None, alpha=0.5):
         num_instances = 0
         if boxes is not None:
             boxes = np.asarray(boxes.cpu())
             num_instances = len(boxes)
+
         if masks is not None:
             if masks.is_floating_point():
                 masks = masks > 0.5
@@ -221,10 +266,33 @@ class Visualizer:
                 assert len(masks) == num_instances
             else:
                 num_instances = len(masks)
+
+        if edges is not None:
+            if edges.is_floating_point():
+                edges = edges > 0.5
+            m = np.asarray(edges.cpu())
+            edges = [GenericEdge(x, self.output.height, self.output.width) for x in m]
+            if num_instances:
+                assert len(edges) == num_instances
+            else:
+                num_instances = len(edges)
+        
+        if vertices is not None:
+            if vertices.is_floating_point():
+                vertices = vertices > 0.5
+            m = np.asarray(vertices.cpu())
+            vertices = [GenericVertex(x, self.output.height, self.output.width) for x in m]
+            if num_instances:
+                assert len(vertices) == num_instances
+            else:
+                num_instances = len(vertices)
+
         if labels is not None:
             assert len(labels) == num_instances
+
         if assigned_colors is None:
             assigned_colors = [random_color(rgb=True, maximum=1) for _ in range(num_instances)]
+        
         if num_instances == 0:
             return self.output
 
@@ -241,6 +309,8 @@ class Visualizer:
             boxes = boxes[sorted_idxs] if boxes is not None else None
             labels = [labels[k] for k in sorted_idxs] if labels is not None else None
             masks = [masks[idx] for idx in sorted_idxs] if masks is not None else None
+            edges = [edges[idx] for idx in sorted_idxs] if edges is not None else None
+            vertices = [vertices[idx] for idx in sorted_idxs] if vertices is not None else None
             assigned_colors = [assigned_colors[idx] for idx in sorted_idxs]
 
         for i in range(num_instances):
@@ -249,8 +319,20 @@ class Visualizer:
                 self.draw_box(boxes[i], edge_color=color)
 
             if masks is not None:
-                for segment in masks[i].polygons:
-                    self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha)
+                polygons = masks[i].polygons
+                if polygons[1]:
+                    for segment in polygons[0]:
+                        self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha)
+
+            if edges is not None:
+                polygons = edges[i].polygons
+                if polygons[1]:
+                    self.draw_polygon(polygons[0].transpose(), [1.0, 0.0, 0.0], alpha=alpha)
+
+            if vertices is not None:
+                points = vertices[i].points
+                if points[1]:
+                    self.draw_polygon(points[0].transpose(), color, alpha=alpha)
 
             if labels is not None:
                 # first get a box

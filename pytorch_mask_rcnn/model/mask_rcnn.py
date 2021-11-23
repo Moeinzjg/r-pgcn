@@ -128,9 +128,13 @@ class MaskRCNN(nn.Module):
         
         self.head.mask_roi_pool = RoIAlign(output_size=(14, 14), sampling_ratio=2)
         
-        layers = (256, 256, 256, 256)
-        dim_reduced = 256
-        self.head.mask_predictor = MaskRCNNPredictor(out_channels, layers, dim_reduced, num_classes)
+        layers_mask = (256, 256, 256, 256)
+        dim_reduced_mask = 256
+        # TODO: in Kang's we have one conv(256, 2) followed by a linear layer
+
+        self.head.mask_predictor = MaskRCNNPredictor(out_channels, layers_mask, dim_reduced_mask, num_classes)
+        self.head.edge_predictor = EdgeRCNNPredictor(out_channels, num_classes)
+        self.head.vertex_predictor = VertexRCNNPredictor(out_channels, num_classes)
         
         #------------ Transformer --------------------------
         self.transformer = Transformer(
@@ -138,6 +142,8 @@ class MaskRCNN(nn.Module):
             image_mean=[0.485, 0.456, 0.406], 
             image_std=[0.229, 0.224, 0.225])
         
+        # TODO: transformer changes mask too! so, include edge&vertex too. 
+
     def forward(self, image, target=None):
         ori_image_shape = image.shape[-2:]
         
@@ -187,11 +193,11 @@ class MaskRCNNPredictor(nn.Sequential):
         next_feature = in_channels
         for layer_idx, layer_features in enumerate(layers, 1):
             d['mask_fcn{}'.format(layer_idx)] = nn.Conv2d(next_feature, layer_features, 3, 1, 1)
-            d['relu{}'.format(layer_idx)] = nn.ReLU(inplace=True)
+            d['mask_relu{}'.format(layer_idx)] = nn.ReLU(inplace=True)
             next_feature = layer_features
         
-        d['mask_conv5'] = nn.ConvTranspose2d(next_feature, dim_reduced, 2, 2, 0)
-        d['relu5'] = nn.ReLU(inplace=True)
+        d['mask_conv_trans'] = nn.ConvTranspose2d(next_feature, dim_reduced, 2, 2, 0)
+        d['mask_relu_trans'] = nn.ReLU(inplace=True)
         d['mask_fcn_logits'] = nn.Conv2d(dim_reduced, num_classes, 1, 1, 0)
         super().__init__(d)
 
@@ -199,7 +205,57 @@ class MaskRCNNPredictor(nn.Sequential):
             if 'weight' in name:
                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
                 
+
+class EdgeRCNNPredictor(nn.Sequential):
+    def __init__(self, in_channels, num_classes):
+        """
+        Arguments:
+            in_channels (int)
+            layers (Tuple[int])
+            dim_reduced (int)
+            num_classes (int)
+        """
+        
+        d = OrderedDict()
+        
+        d['edge_fcn1'] = nn.Conv2d(in_channels, 256, 3, 1, 1)
+        d['edge_relu1'] = nn.ReLU(inplace=True)
+        
+        d['edge_conv_trans'] = nn.ConvTranspose2d(256, 256, 2, 2, 0)
+        d['relu_trans'] = nn.ReLU(inplace=True)
+        d['edge_fcn_logits'] = nn.Conv2d(256, num_classes, 1, 1, 0)
+        super().__init__(d)
+
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
+
+
+class VertexRCNNPredictor(nn.Sequential):
+    def __init__(self, in_channels, num_classes):
+        """
+        Arguments:
+            in_channels (int)
+            layers (Tuple[int])
+            dim_reduced (int)
+            num_classes (int)
+        """
+        
+        d = OrderedDict()
     
+        d['vertex_fcn1'] = nn.Conv2d(in_channels, 256, 3, 1, 1)
+        d['vertex_relu1'] = nn.ReLU(inplace=True)
+        
+        d['vertex_conv_trans'] = nn.ConvTranspose2d(256, 256, 2, 2, 0)
+        d['veretx_relu_trans'] = nn.ReLU(inplace=True)
+        d['vertex_fcn_logits'] = nn.Conv2d(256, num_classes, 1, 1, 0)
+        super().__init__(d)
+
+        for name, param in self.named_parameters():
+            if 'weight' in name:
+                nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
+
+
 class ResBackbone(nn.Module):
     def __init__(self, backbone_name, pretrained):
         super().__init__()
@@ -238,7 +294,7 @@ def maskrcnn_resnet50(pretrained, num_classes, pretrained_backbone=True):
         pretrained (bool): If True, returns a model pre-trained on COCO train2017.
         num_classes (int): number of classes (including the background).
     """
-    
+    # TODO: enable pretrained maskrcnn for r-polygcn
     if pretrained:
         backbone_pretrained = False
         

@@ -56,7 +56,7 @@ class BalancedPositiveNegativeSampler:
         return pos_idx, neg_idx
 
     
-def roi_align(features, rois, spatial_scale, pooled_height, pooled_width, sampling_ratio):
+def roi_align(features, rois, spatial_scale, pooled_height, pooled_width, sampling_ratio):  # TODO: can be replaced with pyramidroialign (MultiScale in torchvision)
     if torch.__version__ >= "1.5.0":
         return torch.ops.torchvision.roi_align(
             features, rois, spatial_scale, pooled_height, pooled_width, sampling_ratio, False)
