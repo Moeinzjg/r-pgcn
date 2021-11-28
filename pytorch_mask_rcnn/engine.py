@@ -52,7 +52,6 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
                 writer.add_scalar(k, losses[k], num_iters) 
             writer.add_scalar('total_loss', total_loss, num_iters)   
 
-
         t_m.update(time.time() - T)
         if i >= iters - 1:
             break
@@ -67,7 +66,7 @@ def evaluate(model, data_loader, device, args, generate=True):
     if generate:
         iter_eval = generate_results(model, data_loader, device, args)
 
-    dataset = data_loader #
+    dataset = data_loader
     iou_types = ["bbox", "segm"]
     coco_evaluator = CocoEvaluator(dataset.coco, iou_types)
 
@@ -85,10 +84,10 @@ def evaluate(model, data_loader, device, args, generate=True):
 
     output = sys.stdout
     sys.stdout = temp
-        
+
     return output, iter_eval
-    
-    
+
+
 # generate results file
 @torch.no_grad()
 def generate_results(model, data_loader, device, args):
@@ -116,11 +115,10 @@ def generate_results(model, data_loader, device, args):
         t_m.update(time.time() - T)
         if i >= iters - 1:
             break
-     
-    A = time.time() - A 
+
+    A = time.time() - A
     print("iter: {:.1f}, total: {:.1f}, model: {:.1f}".format(1000*A/iters,1000*t_m.avg,1000*m_m.avg))
     torch.save(coco_results, args.results)
-        
+
     return A / iters
-    
 
