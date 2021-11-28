@@ -47,9 +47,8 @@ def show(images, targets=None, classes=None, save_path=None):
         if targets is not None:
             fig.draw_instance_predictions(targets[i], classes)
         fig.show()
-        
-        if save_path is not None:
-            fig.output.save(save_path[i])
+        if save_path is not None:   
+            fig.save_plot(save_path[i])
 
 
 @unique
@@ -110,17 +109,6 @@ class GenericEdge:
         self.width = width
 
         self.edge = edge.astype("uint8")  # ndarray, shape=(h, w)
-        self.polygons = self.edge_to_polygons(self.edge)
-
-    def edge_to_polygons(self, edge):  # TODO: draw pure edges without extracting contours
-        edge = np.ascontiguousarray(edge)  # some versions of cv2 does not support incontiguous arr
-        # res = cv2.findContours(edge, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
-        edge_points = np.nonzero(edge)
-        res = np.vstack(edge_points)
-        if res.shape[1] == 0:  # empty mask
-            return [], False
-
-        return res, True
 
 
 class GenericVertex:
@@ -135,8 +123,8 @@ class GenericVertex:
     def vertex_mask_to_points(self, vertex):
         vertex = np.ascontiguousarray(vertex)  # some versions of cv2 does not support incontiguous arr
         ver = np.nonzero(vertex)
-        res = np.vstack(ver)
-        # res = cv2.findContours(vertex, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_NONE)
+        res = np.vstack((ver[1], ver[0]))
+        
         if res.shape[1] == 0:  # empty mask
             return [], False
 
@@ -191,9 +179,6 @@ class VisImage:
         img = img.astype("uint8")
         self.ax.imshow(img, extent=(0, self.width, self.height, 0), interpolation="nearest")
 
-    def save(self, filepath):
-        self.fig.savefig(filepath)
-
     def get_image(self):
         canvas = self.canvas
         s, (width, height) = canvas.print_to_buffer()
@@ -201,7 +186,7 @@ class VisImage:
 
         img_rgba = buffer.reshape(height, width, 4)
         rgb, alpha = np.split(img_rgba, [3], axis=2)
-        return rgb.astype("uint8") # shape (H, W, 3) (RGB) in uint8 type
+        return rgb.astype("uint8")  # shape (H, W, 3) (RGB) in uint8 type
 
 
 class Visualizer:
@@ -312,6 +297,12 @@ class Visualizer:
             edges = [edges[idx] for idx in sorted_idxs] if edges is not None else None
             vertices = [vertices[idx] for idx in sorted_idxs] if vertices is not None else None
             assigned_colors = [assigned_colors[idx] for idx in sorted_idxs]
+        
+        if edges is not None:
+            self.all_edges = edges[0].edge.copy()
+        
+        if vertices is not None:
+            self.all_vertices = vertices[0].vertex.copy()
 
         for i in range(num_instances):
             color = assigned_colors[i]
@@ -325,14 +316,12 @@ class Visualizer:
                         self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha)
 
             if edges is not None:
-                polygons = edges[i].polygons
-                if polygons[1]:
-                    self.draw_polygon(polygons[0].transpose(), [1.0, 0.0, 0.0], alpha=alpha)
+                self.all_edges[edges[i].edge == 1] = 1
 
             if vertices is not None:
                 points = vertices[i].points
                 if points[1]:
-                    self.draw_polygon(points[0].transpose(), color, alpha=alpha)
+                    self.draw_polypoint(points[0].transpose(), color, alpha=alpha)
 
             if labels is not None:
                 # first get a box
@@ -427,7 +416,7 @@ class Visualizer:
         )
         return self.output
 
-    def draw_polygon(self, segment, color, edge_color=None, alpha=0.5):
+    def draw_polygon(self, segment, color, edge_color=None, alpha=0.5, fill=True):
         if edge_color is None:
             # make edge color darker than the polygon color
             if alpha > 0.8:
@@ -438,27 +427,52 @@ class Visualizer:
 
         polygon = mpl.patches.Polygon(
             segment,
-            fill=True,
+            fill=fill,
             facecolor=mplc.to_rgb(color) + (alpha,),
             edgecolor=edge_color,
             linewidth=max(self._default_font_size // 15 * self.output.scale, 1),
         )
         self.output.ax.add_patch(polygon)
         return self.output
-    
-    def show(self, title=None):
+
+    def draw_polypoint(self, segment, color, alpha=0.5):
+
+        self.output.ax.plot(segment[:, 0], segment[:, 1], '*', color=color, alpha=alpha)
+
+        return self.output
+
+    def show(self):
         H, W = self.img.shape[:2]
-        fig = plt.figure(figsize=(W / 72, H / 72))
+        self.fig = plt.figure(figsize=(W / 72, H / 72))
         
-        ax = fig.add_subplot(111)
-        ax.imshow(self.output.get_image())
-        
-        if title is not None:
-            ax.set_title("{}".format(title))
+        # plot mask prediction
+        ax = self.fig.add_subplot(131)
+        img_out = self.output.get_image()
+        ax.imshow(img_out)
+        ax.set_title("mask prediction")
         ax.axis("off")
-        
+
+        # plot edge prediction
+        ax2 = self.fig.add_subplot(132)
+        img_out2 = self.img.copy()
+        img_out2[self.all_edges == 1] = [255, 0, 0]  # add edges
+        ax2.imshow(img_out2.astype("uint8"))
+        ax2.set_title("edge prediction")
+        ax2.axis("off")
+
+        # plot vertex prediction
+        ax3 = self.fig.add_subplot(133)
+        img_out3 = self.img.copy()
+        img_out3[self.all_vertices == 1] = [255, 0, 0]  # add vertices
+        ax3.imshow(img_out3.astype("uint8"))
+        ax3.set_title("vertex prediction")
+        ax3.axis("off")
+
         plt.show()
-    
+
+    def save_plot(self, file_path):
+        self.fig.savefig(file_path, bbox_inches='tight')
+
     def _jitter(self, color):
         color = mplc.to_rgb(color)
         vec = np.random.rand(3)
