@@ -27,7 +27,28 @@ if ckpt_path:
 for p in model.parameters():
     p.requires_grad_(False)
 
-iters = 6
+# Quantitative measures for edge and vertex
+for i, (image, target) in enumerate(d):
+    image = image.to(device)[0]
+    target = {k: v.to(device) for k, v in target.items()}
+
+    with torch.no_grad():
+        result = model(image)
+    
+    prediction = {k: v.cpu() for k, v in result.items()}
+
+    pred_edges = prediction['edges'].numpy()
+    pred_vertices = prediction['vertices'].numpy()
+
+    gt_edges = target['edges'].cpu().numpy()
+    gt_vertices = target['vertices'].cpu().numpy()
+    import pdb; pdb.set_trace()
+    # Average Precision
+
+
+
+# Visualization
+num_images = 6
 
 for i, (image, target) in enumerate(d):
     image = image.to(device)[0]
@@ -39,5 +60,5 @@ for i, (image, target) in enumerate(d):
     # print(result)
     pmr.show(image, result, ds.classes, "./images/output{}.jpg".format(i))
 
-    if i >= iters - 1:
+    if i >= num_images - 1:
         break
