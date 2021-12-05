@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from model.GNN.GCN_layer  import GraphConvolution
-from model.GNN.GCN_res_layer import GraphResConvolution
+from .GCN_layer  import GraphConvolution
+from .GCN_res_layer import GraphResConvolution
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 

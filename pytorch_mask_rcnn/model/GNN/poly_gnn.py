@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from utils import gather_feature, prepare_gcn_component
-from model.GNN.GCN import GCN
+from .. import utils
+from .GCN import GCN
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -58,10 +58,10 @@ class PolyGNN(nn.Module):
 
         for i in range(self.coarse_to_fine_steps):
             if i == 0:
-                component = prepare_gcn_component(init_polys.numpy(),
-                                                  [self.feature_grid_size],
-                                                  init_polys.size()[1],
-                                                  n_adj=self.n_adj)
+                component = utils.prepare_gcn_component(init_polys.numpy(),
+                                                        [self.feature_grid_size],
+                                                        init_polys.size()[1],
+                                                        n_adj=self.n_adj)
 
                 init_polys = init_polys.to(device)
                 adjacent = component['adj_matrix'].to(device)
@@ -112,10 +112,10 @@ class PolyGNN(nn.Module):
             N3_id = X1 + Y0 * grid
             N4_id = X1 + Y1 * grid
 
-            M_00 = gather_feature(N1_id, cnns[i])
-            M_01 = gather_feature(N2_id, cnns[i])
-            M_10 = gather_feature(N3_id, cnns[i])
-            M_11 = gather_feature(N4_id, cnns[i])
+            M_00 = utils.gather_feature(N1_id, cnns[i])
+            M_01 = utils.gather_feature(N2_id, cnns[i])
+            M_10 = utils.gather_feature(N3_id, cnns[i])
+            M_11 = utils.gather_feature(N4_id, cnns[i])
             cnn_out = w_00.unsqueeze(2) * M_00 + \
                       w_01.unsqueeze(2) * M_01 + \
                       w_10.unsqueeze(2) * M_10 + \
@@ -132,7 +132,7 @@ class PolyGNN(nn.Module):
         for i in range(ids.size()[1]):
             id = ids[:, i, :]
 
-            cnn_out = gather_feature(id, features[i])
+            cnn_out = utils.gather_feature(id, features[i])
             cnn_out_feature.append(cnn_out)
 
         concat_features = torch.cat(cnn_out_feature, dim=2)

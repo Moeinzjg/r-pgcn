@@ -135,7 +135,7 @@ class MaskRCNN(nn.Module):
         # TODO: in Kang's we have one conv(256, 2) followed by a linear layer
 
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, layers_mask, dim_reduced_mask, num_classes)
-        self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=14)  # TODO: it might be 28
+        self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=28)  # TODO: it might be 14
 
         # ------------ Transformer --------------------------
         self.transformer = Transformer(

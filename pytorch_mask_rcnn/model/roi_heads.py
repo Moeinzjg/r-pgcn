@@ -59,8 +59,10 @@ def poly_matching_loss(pnum, pred, gt, loss_type="L1"):
 
     min_dis, min_id = torch.min(dis, dim=1, keepdim=True)
     min_id = torch.from_numpy(min_id.data.cpu().numpy()).to(pred.device)
-    min_gt_id_to_gather = min_id.unsqueeze_(2).unsqueeze_(3).long().\
-                          expand(min_id.size(0), min_id.size(1), gt_expand.size(2), gt_expand.size(3))
+    min_gt_id_to_gather = min_id.unsqueeze_(2).unsqueeze_(3).long().expand(min_id.size(0),
+                                                                           min_id.size(1),
+                                                                           gt_expand.size(2),
+                                                                           gt_expand.size(3))
 
     gt_right_order = torch.gather(gt_expand, 1, min_gt_id_to_gather).view(batch_size, pnum, 2)
 
@@ -196,7 +198,7 @@ class RoIHeads(nn.Module):
             # TODO: We can define an empty list here to save pred_polygons of each step
             # create circle polygon data
             init_polys = get_initial_points(self.num_points)
-
+            init_polys = torch.from_numpy(init_polys).unsqueeze(0).repeat(mask_feature.shape[0], 1, 1)
             pred_polygon, pred_adjacent = self.polygon_predictor(mask_feature, init_polys)
 
             if self.training:

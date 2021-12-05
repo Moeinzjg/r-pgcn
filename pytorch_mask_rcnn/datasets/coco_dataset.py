@@ -41,9 +41,9 @@ class COCODataset(GeneralizedDataset):
         x, y, w, h = boxes.T
         return torch.stack((x, y, x + w, y + h), dim=1)  # new_box format: (xmin, ymin, xmax, ymax)
 
-    def make_polygon(self, poly, shape):
+    def make_polygon(self, poly, shape):  # TODO: check if x and y are right not y, x
         EPS = 1e-7
-        poly_temp = poly.copy()
+        poly_temp = poly.copy()  # TODO: make coordinates local in each bbox!!!!
         poly_temp = np.array(poly_temp).reshape(-1, 2)  # [x, y]
         poly_temp[:, 0] = np.clip(poly_temp[:, 0], 0 + EPS, shape[0] - EPS)
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
