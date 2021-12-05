@@ -324,3 +324,6 @@ maskrcnn_results
 
 # Special Files
 pytorch_mask_rcnn/gpu_info.json
+
+# VS code
+.vscode/
