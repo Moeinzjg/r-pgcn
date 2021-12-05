@@ -20,7 +20,7 @@ class GeneralizedDataset:
         image = self.get_image(img_id)
         image = transforms.ToTensor()(image)
         target = self.get_target(img_id) if self.train else {}
-        return image, target   
+        return image, target
     
     def __len__(self):
         return len(self.ids)
@@ -67,15 +67,13 @@ class GeneralizedDataset:
             boxes = target["boxes"]
             labels = target["labels"]
             masks = target["masks"]
-            edge_masks = target["edges"]
-            vertex_masks = target["vertices"]
+            polygons = target["polygons"]
 
             try:
                 assert len(boxes) > 0, "{}: len(boxes) = 0".format(i)
                 assert len(boxes) == len(labels), "{}: len(boxes) != len(labels)".format(i)
                 assert len(boxes) == len(masks), "{}: len(boxes) != len(masks)".format(i)
-                assert len(boxes) == len(edge_masks), "{}: len(boxes) != len(edge masks)".format(i)
-                assert len(boxes) == len(vertex_masks), "{}: len(boxes) != len(vertex masks)".format(i)
+                assert len(boxes) == len(polygons), "{}: len(boxes) != len(polygons)".format(i)
 
                 out.append((img_id, self._aspect_ratios[i]))
             except AssertionError as e:
