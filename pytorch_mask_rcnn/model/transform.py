@@ -49,13 +49,6 @@ class Transformer:
             mask = F.interpolate(mask[None].float(), size=size)[0].byte()
             target['masks'] = mask
 
-        if 'polygons' in target:
-            #  Resize to [0 1]
-            polygon = target['polygons']
-            polygon[:, 0] = polygon[:, 0] / ori_image_shape[0]
-            polygon[:, 1] = polygon[:, 1] / ori_image_shape[1]
-            target['polygons'] = polygon
-
         return image, target
 
     def batched_image(self, image, stride=32):

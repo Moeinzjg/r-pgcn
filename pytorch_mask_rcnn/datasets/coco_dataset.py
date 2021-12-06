@@ -54,7 +54,7 @@ class COCODataset(GeneralizedDataset):
         arr_polygon = np.ones((self.num_points, 2), np.float32) * 0.
         arr_polygon[:, :] = polygon
 
-        # convert coordinates from global to local
+        # convert coordinates from global to local i.e. [0, 1]
         x_min, y_min, w, h = bbox.T
 
         x_max = x_min + w
