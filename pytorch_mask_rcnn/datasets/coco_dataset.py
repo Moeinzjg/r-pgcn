@@ -1,4 +1,5 @@
 import os
+from re import X
 from PIL import Image
 
 import torch
@@ -41,9 +42,9 @@ class COCODataset(GeneralizedDataset):
         x, y, w, h = boxes.T
         return torch.stack((x, y, x + w, y + h), dim=1)  # new_box format: (xmin, ymin, xmax, ymax)
 
-    def make_polygon(self, poly, shape):  # TODO: check if x and y are right not y, x
+    def make_polygon(self, poly, shape, bbox):  # TODO: check if x and y are right not y, x
         EPS = 1e-7
-        poly_temp = poly.copy()  # TODO: make coordinates local in each bbox!!!!
+        poly_temp = poly.copy()
         poly_temp = np.array(poly_temp).reshape(-1, 2)  # [x, y]
         poly_temp[:, 0] = np.clip(poly_temp[:, 0], 0 + EPS, shape[0] - EPS)
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
@@ -52,7 +53,41 @@ class COCODataset(GeneralizedDataset):
         polygon = self.uniform_sample(poly_temp, self.num_points)
         arr_polygon = np.ones((self.num_points, 2), np.float32) * 0.
         arr_polygon[:, :] = polygon
+
+        # convert coordinates from global to local
+        x_min, y_min, w, h = bbox.T
+
+        x_max = x_min + w
+        y_max = y_min + h
+
+        x_min = max(0, x_min)
+        x_max = min(shape[1] - 1, x_max)
+
+        y_center = y_min + (1 + h) / 2. # Bounding box finishing Layer
+
+        patch_w = x_max - x_min
+        # NOTE: Different from before
+
+        y_min = int(np.floor(y_center - patch_w / 2.))
+        y_max = y_min + patch_w
+
+        top_margin = max(0, y_min) - y_min
+
+        y_min = max(0, y_min)
+        y_max = min(shape[0] - 1, y_max)
+
+        xs = arr_polygon[:, 0]
+        ys = arr_polygon[:, 1]
         
+        xs = (xs - x_min) / float(patch_w)
+        ys = (ys - (y_min - top_margin)) / float(patch_w)
+
+        xs = np.clip(xs, 0 + EPS, 1 - EPS) # between epsilon and 1-epsilon
+        ys = np.clip(ys, 0 + EPS, 1 - EPS)
+
+        arr_polygon[:, 0] = xs
+        arr_polygon[:, 1] = ys
+
         return arr_polygon
 
     def uniform_sample(self, pgtnp_px2, newpnum):
