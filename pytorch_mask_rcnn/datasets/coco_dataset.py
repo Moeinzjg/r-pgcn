@@ -38,8 +38,8 @@ class COCODataset(GeneralizedDataset):
         return image.convert("RGB")
 
     @staticmethod
-    def convert_to_xyxy(boxes):  # box format: (xmin, ymin, w, h)
-        x, y, w, h = boxes.T
+    def convert_to_xyxy(box):  # box format: (xmin, ymin, w, h)
+        x, y, w, h = box.T
         return torch.stack((x, y, x + w, y + h), dim=1)  # new_box format: (xmin, ymin, xmax, ymax)
 
     def make_polygon(self, poly, shape, bbox):  # TODO: check if x and y are right not y, x
@@ -55,7 +55,7 @@ class COCODataset(GeneralizedDataset):
         arr_polygon[:, :] = polygon
 
         # convert coordinates from global to local i.e. [0, 1]
-        x_min, y_min, w, h = bbox.T
+        x_min, y_min, w, h = bbox
 
         x_max = x_min + w
         y_max = y_min + h
@@ -63,7 +63,7 @@ class COCODataset(GeneralizedDataset):
         x_min = max(0, x_min)
         x_max = min(shape[1] - 1, x_max)
 
-        y_center = y_min + (1 + h) / 2. # Bounding box finishing Layer
+        y_center = y_min + (1 + h) / 2.  # Bounding box finishing Layer
 
         patch_w = x_max - x_min
         # NOTE: Different from before
@@ -78,11 +78,11 @@ class COCODataset(GeneralizedDataset):
 
         xs = arr_polygon[:, 0]
         ys = arr_polygon[:, 1]
-        
+
         xs = (xs - x_min) / float(patch_w)
         ys = (ys - (y_min - top_margin)) / float(patch_w)
 
-        xs = np.clip(xs, 0 + EPS, 1 - EPS) # between epsilon and 1-epsilon
+        xs = np.clip(xs, 0 + EPS, 1 - EPS)  # between epsilon and 1-epsilon
         ys = np.clip(ys, 0 + EPS, 1 - EPS)
 
         arr_polygon[:, 0] = xs
@@ -173,7 +173,7 @@ class COCODataset(GeneralizedDataset):
                 masks.append(mask)
                 poly = ann['segmentation'][0]
 
-                polygon = self.make_polygon(poly, mask.shape)
+                polygon = self.make_polygon(poly, mask.shape, ann['bbox'])
                 polygons.append(polygon)
 
             boxes = torch.tensor(boxes, dtype=torch.float32)
