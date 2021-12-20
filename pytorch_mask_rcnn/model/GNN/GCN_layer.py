@@ -8,11 +8,11 @@ class GraphConvolution(Module):
     Simple GCN layer, similar to https://arxiv.org/abs/1609.02907
     """
 
-    def __init__(self, state_dim,  name='', out_state_dim=None):
+    def __init__(self, state_dim, name='', out_state_dim=None):
         super(GraphConvolution, self).__init__()
         self.state_dim = state_dim
 
-        if out_state_dim == None:
+        if out_state_dim is None:
             self.out_state_dim = state_dim
         else:
             self.out_state_dim = out_state_dim

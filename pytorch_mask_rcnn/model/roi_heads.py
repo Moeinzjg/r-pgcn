@@ -33,7 +33,16 @@ def maskrcnn_loss(mask_logit, proposal, matched_idx, label, gt_mask):
     return mask_loss
 
 
-def poly_matching_loss(pnum, pred, gt, loss_type="L1"):
+def poly_matching_loss(pnum, pred, gt, matched_idx, loss_type="L1"):
+
+    matched_idx = matched_idx.unsqueeze(1).unsqueeze(2).long().to(gt.device)
+    matched_idx = matched_idx.expand(-1, gt.shape[1], gt.shape[2])
+    # print('--------------------------')
+    # print(f'gt shape: {gt.shape}, matched_idx shape: {matched_idx2.shape}')
+    # print(f'matched idx max: {matched_idx.max()}, matched idx min: {matched_idx2.min()}')
+    # print(f'matched idx: {matched_idx}')
+    # print('--------------------------')
+    gt = torch.gather(gt, 0, matched_idx)
 
     batch_size = pred.size()[0]
     pidxall = np.zeros(shape=(batch_size, pnum, pnum), dtype=np.int32)
@@ -64,7 +73,7 @@ def poly_matching_loss(pnum, pred, gt, loss_type="L1"):
                                                                            gt_expand.size(2),
                                                                            gt_expand.size(3))
 
-    gt_right_order = torch.gather(gt_expand, 1, min_gt_id_to_gather).view(batch_size, pnum, 2)
+    gt_right_order = torch.gather(gt_expand, 1, min_gt_id_to_gather).view(batch_size, pnum, 2)  # TODO: check the application of this
 
     return gt_right_order, torch.mean(min_dis)
 
@@ -115,6 +124,9 @@ class RoIHeads(nn.Module):
         regression_target = self.box_coder.encode(gt_box[matched_idx[pos_idx]], proposal[pos_idx])
         proposal = proposal[idx]
         matched_idx = matched_idx[idx]
+        # print('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
+        # print(gt_label.shape)
+        # print('$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$')
         label = gt_label[matched_idx]
         num_pos = pos_idx.shape[0]
         label[num_pos:] = 0
@@ -188,7 +200,9 @@ class RoIHeads(nn.Module):
                 mask_proposal = result['boxes']
 
                 if mask_proposal.shape[0] == 0:
-                    result.update(dict(masks=torch.empty((0, 28, 28)), polygons=torch.empty((0, self.num_points, 2))))  # TODO: add adjacency
+                    result.update(dict(masks=torch.empty((0, 28, 28)),
+                                       polygons=torch.empty((0, self.num_points, 2)),
+                                       adjacency=torch.empty((0, self.num_points, self.num_points))))
                     return result, losses
 
             mask_feature = self.mask_roi_pool(feature, mask_proposal, image_shape)
@@ -199,22 +213,22 @@ class RoIHeads(nn.Module):
             # create circle polygon data
             init_polys = get_initial_points(self.num_points)
             init_polys = torch.from_numpy(init_polys).unsqueeze(0).repeat(mask_feature.shape[0], 1, 1)
-            pred_polygon, pred_adjacent = self.polygon_predictor(mask_feature, init_polys)
+            polygcn_feature = mask_feature.permute(0, 2, 3, 1).view(-1, mask_feature.shape[-1]**2, mask_feature.shape[1])
+            pred_polygon, pred_adjacent = self.polygon_predictor(polygcn_feature, init_polys)
 
             if self.training:
                 gt_mask = target['masks']
                 gt_polygon = target['polygons']
 
                 mask_loss = maskrcnn_loss(mask_logit, mask_proposal, pos_matched_idx, mask_label, gt_mask)
-                _, polygon_loss = poly_matching_loss(self.num_points, pred_polygon, gt_polygon, loss_type="L1")
+
+                _, polygon_loss = poly_matching_loss(self.num_points, pred_polygon, gt_polygon, pos_matched_idx, loss_type="L1")
                 losses.update(dict(roi_mask_loss=mask_loss, roi_polygon_loss=polygon_loss))
             else:
                 label = result['labels']
                 idx = torch.arange(label.shape[0], device=label.device)
-                mask_logit = mask_logit[idx, label]
-                # pred_polygon = pred_polygon[idx, label]
-                import pdb; pdb.set_trace()
 
+                mask_logit = mask_logit[idx, label]
                 mask_prob = mask_logit.sigmoid()
 
                 result.update(dict(masks=mask_prob, polygons=pred_polygon, adjacency=pred_adjacent))

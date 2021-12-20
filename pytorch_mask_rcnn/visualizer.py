@@ -20,7 +20,7 @@ _SMALL_OBJECT_AREA_THRESH = 1000
 def show(images, targets=None, classes=None, save_path=None):
     """
     Show the image, with or without the target.
-    
+
     args:
         images (tensor[B, 3, H, W] or List[tensor[3, H, W]]): RGB channels, value range: [0.0, 1.0]
         targets (Dict[str: tensor]): current support "boxes", "labels", "scores", "masks"
@@ -36,19 +36,25 @@ def show(images, targets=None, classes=None, save_path=None):
         targets = [targets]
     if isinstance(save_path, str):
         if len(images) == 1:
+            prefix, ext = os.path.splitext(save_path)
+            save_path_poly = ["{}_poly{}".format(prefix, ext)]
             save_path = [save_path]
         else:
             prefix, ext = os.path.splitext(save_path)
             save_path = ["{}_{}{}".format(prefix, i + 1, ext) for i in range(len(images))]
-        
+            save_path_poly = ["{}_{}_poly{}".format(prefix, i + 1, ext) for i in range(len(images))]
+
     for i in range(len(images)):
         fig = Visualizer(images[i])
-        
+        fig_poly = Visualizer(images[i])
+
         if targets is not None:
             fig.draw_instance_predictions(targets[i], classes)
+            fig_poly.draw_instance_predictions(targets[i], classes)
         fig.show()
-        if save_path is not None:   
+        if save_path is not None:
             fig.save_plot(save_path[i])
+            # fig_poly.save_plot(save_path_poly[i])
 
 
 @unique
@@ -92,7 +98,7 @@ class GenericMask:
 
     def area(self):
         return self.mask.sum()
-    
+
     def bbox(self):
         p = mask_util.frPyObjects(self.polygons, self.height, self.width)
         p = mask_util.merge(p)
@@ -102,33 +108,39 @@ class GenericMask:
         return bbox
 
 
-class GenericEdge:
-    def __init__(self, edge, height, width):
-        self._edge = None
-        self.height = height
-        self.width = width
-
-        self.edge = edge.astype("uint8")  # ndarray, shape=(h, w)
+class GenericPolygon:
+    def __init__(self, polygon):
+        self._polygon = None
+        self.polygon = polygon
 
 
-class GenericVertex:
-    def __init__(self, vertex, height, width):
-        self._vertex = None
-        self.height = height
-        self.width = width
+# class GenericEdge:
+#     def __init__(self, edge, height, width):
+#         self._edge = None
+#         self.height = height
+#         self.width = width
 
-        self.vertex = vertex.astype("uint8")  # ndarray, shape=(h, w)
-        self.points = self.vertex_mask_to_points(self.vertex)
+#         self.edge = edge.astype("uint8")  # ndarray, shape=(h, w)
 
-    def vertex_mask_to_points(self, vertex):
-        vertex = np.ascontiguousarray(vertex)  # some versions of cv2 does not support incontiguous arr
-        ver = np.nonzero(vertex)
-        res = np.vstack((ver[1], ver[0]))
+
+# class GenericVertex:
+#     def __init__(self, vertex, height, width):
+#         self._vertex = None
+#         self.height = height
+#         self.width = width
+
+#         self.vertex = vertex.astype("uint8")  # ndarray, shape=(h, w)
+#         self.points = self.vertex_mask_to_points(self.vertex)
+
+    # def vertex_mask_to_points(self, vertex):
+    #     vertex = np.ascontiguousarray(vertex)  # some versions of cv2 does not support incontiguous arr
+    #     ver = np.nonzero(vertex)
+    #     res = np.vstack((ver[1], ver[0]))
         
-        if res.shape[1] == 0:  # empty mask
-            return [], False
+    #     if res.shape[1] == 0:  # empty mask
+    #         return [], False
 
-        return res, True
+    #     return res, True
 
 
 def _create_text_labels(classes, scores, class_names):
@@ -195,13 +207,14 @@ class Visualizer:
         img_rgb = img_rgb.cpu().permute(1, 2, 0) * 255
         self.img = np.asarray(img_rgb).clip(0, 255).astype(np.uint8)
         self.output = VisImage(self.img, scale=scale)
+        self.output_poly = VisImage(self.img, scale=scale)
 
         # too small texts are useless, therefore clamp to 9
         self._default_font_size = max(
             np.sqrt(self.output.height * self.output.width) // 35, 10 // scale
         )
         self._instance_mode = instance_mode
-        
+
     def __call__(self, *args, **kwargs):
         return self.draw_instance_predictions(*args, **kwargs)
 
@@ -210,8 +223,10 @@ class Visualizer:
         scores = predictions["scores"] if "scores" in predictions else None
         classes = predictions["labels"] if "labels" in predictions else None
         masks = predictions["masks"] if "masks" in predictions else None
-        edges = predictions["edges"] if "edges" in predictions else None
-        vertices = predictions["vertices"] if "vertices" in predictions else None
+        polygons = predictions["polygons"] if "polygons" in predictions else None
+
+        # edges = predictions["edges"] if "edges" in predictions else None
+        # vertices = predictions["vertices"] if "vertices" in predictions else None
 
         labels = _create_text_labels(classes.tolist(), scores, class_names)
 
@@ -227,16 +242,17 @@ class Visualizer:
         self.overlay_instances(
             masks=masks,
             boxes=boxes,
-            edges=edges,
-            vertices=vertices,
+            polygons=polygons,
+            # edges=edges,
+            # vertices=vertices,
             labels=labels,
             assigned_colors=colors,
             alpha=alpha,
         )
-        return self.output
+        return self.output, self.output_poly
 
-    def overlay_instances(self, boxes=None, labels=None, masks=None, edges=None,
-                          vertices=None, assigned_colors=None, alpha=0.5):
+    def overlay_instances(self, boxes=None, labels=None, masks=None, polygons=None,
+                          edges=None, vertices=None, assigned_colors=None, alpha=0.5):
         num_instances = 0
         if boxes is not None:
             boxes = np.asarray(boxes.cpu())
@@ -252,6 +268,14 @@ class Visualizer:
             else:
                 num_instances = len(masks)
 
+        if polygons is not None:
+            p = np.array(polygons.cpu())
+            polygons = [GenericPolygon(x) for x in p]
+            if num_instances:
+                assert len(polygons) == num_instances
+            else:
+                num_instances = len(polygons)
+
         if edges is not None:
             if edges.is_floating_point():
                 edges = edges > 0.5
@@ -261,7 +285,7 @@ class Visualizer:
                 assert len(edges) == num_instances
             else:
                 num_instances = len(edges)
-        
+
         if vertices is not None:
             if vertices.is_floating_point():
                 vertices = vertices > 0.5
@@ -277,9 +301,9 @@ class Visualizer:
 
         if assigned_colors is None:
             assigned_colors = [random_color(rgb=True, maximum=1) for _ in range(num_instances)]
-        
+
         if num_instances == 0:
-            return self.output
+            return self.output, self.output_poly
 
         # Display in largest to smallest order to reduce occlusion.
         areas = None
@@ -294,13 +318,14 @@ class Visualizer:
             boxes = boxes[sorted_idxs] if boxes is not None else None
             labels = [labels[k] for k in sorted_idxs] if labels is not None else None
             masks = [masks[idx] for idx in sorted_idxs] if masks is not None else None
-            edges = [edges[idx] for idx in sorted_idxs] if edges is not None else None
-            vertices = [vertices[idx] for idx in sorted_idxs] if vertices is not None else None
+            polygons = [polygons[idx] for idx in sorted_idxs] if polygons is not None else None
+            # edges = [edges[idx] for idx in sorted_idxs] if edges is not None else None
+            # vertices = [vertices[idx] for idx in sorted_idxs] if vertices is not None else None
             assigned_colors = [assigned_colors[idx] for idx in sorted_idxs]
-        
+
         if edges is not None:
             self.all_edges = edges[0].edge.copy()
-        
+
         if vertices is not None:
             self.all_vertices = vertices[0].vertex.copy()
 
@@ -310,10 +335,14 @@ class Visualizer:
                 self.draw_box(boxes[i], edge_color=color)
 
             if masks is not None:
-                polygons = masks[i].polygons
-                if polygons[1]:
-                    for segment in polygons[0]:
-                        self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha)
+                plygons = masks[i].polygons
+                if plygons[1]:
+                    for segment in plygons[0]:
+                        self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha, mask=True)
+
+            if polygons is not None:
+                polygon = polygons[i].polygon
+                self.draw_polygon(polygon, [1.0, 1.0, 1.0], edge_color=[1.0, 0.0, 0.0], alpha=alpha, mask=False)
 
             if edges is not None:
                 self.all_edges[edges[i].edge == 1] = 1
@@ -369,7 +398,7 @@ class Visualizer:
                 )
 
         return self.output
-    
+
     def draw_text(self, text, position, font_size=None, 
                   color="g", horizontal_alignment="center"):
         if not font_size:
@@ -416,7 +445,7 @@ class Visualizer:
         )
         return self.output
 
-    def draw_polygon(self, segment, color, edge_color=None, alpha=0.5, fill=True):
+    def draw_polygon(self, segment, color, edge_color=None, alpha=0.5, fill=True, mask=True):
         if edge_color is None:
             # make edge color darker than the polygon color
             if alpha > 0.8:
@@ -432,8 +461,12 @@ class Visualizer:
             edgecolor=edge_color,
             linewidth=max(self._default_font_size // 15 * self.output.scale, 1),
         )
-        self.output.ax.add_patch(polygon)
-        return self.output
+        if mask:
+            self.output.ax.add_patch(polygon)
+            return self.output
+        else:
+            self.output_poly.ax.add_patch(polygon)
+            return self.output_poly
 
     def draw_polypoint(self, segment, color, alpha=0.5):
 
@@ -444,29 +477,38 @@ class Visualizer:
     def show(self):
         H, W = self.img.shape[:2]
         self.fig = plt.figure(figsize=(W / 72, H / 72))
-        
+
         # plot mask prediction
-        ax = self.fig.add_subplot(131)
+        ax = self.fig.add_subplot(121)
         img_out = self.output.get_image()
         ax.imshow(img_out)
         ax.set_title("mask prediction")
         ax.axis("off")
 
+        # plot polygon prediction
+        ax = self.fig.add_subplot(122)
+        img_out = self.output_poly.get_image()
+        ax.imshow(img_out)
+        ax.set_title("polygon prediction")
+        ax.axis("off")
+
         # plot edge prediction
-        ax2 = self.fig.add_subplot(132)
-        img_out2 = self.img.copy()
-        img_out2[self.all_edges == 1] = [255, 0, 0]  # add edges
-        ax2.imshow(img_out2.astype("uint8"))
-        ax2.set_title("edge prediction")
-        ax2.axis("off")
+        if False:
+            ax2 = self.fig.add_subplot(132)
+            img_out2 = self.img.copy()
+            img_out2[self.all_edges == 1] = [255, 0, 0]  # add edges
+            ax2.imshow(img_out2.astype("uint8"))
+            ax2.set_title("edge prediction")
+            ax2.axis("off")
 
         # plot vertex prediction
-        ax3 = self.fig.add_subplot(133)
-        img_out3 = self.img.copy()
-        img_out3[self.all_vertices == 1] = [255, 0, 0]  # add vertices
-        ax3.imshow(img_out3.astype("uint8"))
-        ax3.set_title("vertex prediction")
-        ax3.axis("off")
+        if False:
+            ax3 = self.fig.add_subplot(133)
+            img_out3 = self.img.copy()
+            img_out3[self.all_vertices == 1] = [255, 0, 0]  # add vertices
+            ax3.imshow(img_out3.astype("uint8"))
+            ax3.set_title("vertex prediction")
+            ax3.axis("off")
 
         plt.show()
 
@@ -490,6 +532,7 @@ class Visualizer:
         modified_lightness = 1.0 if modified_lightness > 1.0 else modified_lightness
         modified_color = colorsys.hls_to_rgb(polygon_color[0], modified_lightness, polygon_color[2])
         return modified_color
+
 
 def random_color(rgb=False, maximum=255):
     idx = np.random.randint(0, len(_COLORS))
@@ -577,4 +620,3 @@ _COLORS = np.array(
         1.000, 1.000, 1.000
     ]
 ).astype(np.float32).reshape(-1, 3)
-

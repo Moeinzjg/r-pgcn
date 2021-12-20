@@ -28,6 +28,7 @@ class COCODataset(GeneralizedDataset):
         checked_id_file = os.path.join(data_dir, "checked_{}.txt".format(split))
         if train:
             if not os.path.exists(checked_id_file):
+                import pdb; pdb.set_trace()
                 self._aspect_ratios = [v["width"] / v["height"] for v in self.coco.imgs.values()]
             self.check_dataset(checked_id_file)
 
@@ -41,6 +42,31 @@ class COCODataset(GeneralizedDataset):
     def convert_to_xyxy(box):  # box format: (xmin, ymin, w, h)
         x, y, w, h = box.T
         return torch.stack((x, y, x + w, y + h), dim=1)  # new_box format: (xmin, ymin, xmax, ymax)
+
+    @staticmethod
+    def poly_check(poly, shape):
+        EPS = 1e-7
+        poly_temp = poly.copy()
+        poly_temp = np.array(poly_temp).reshape(-1, 2)  # [x, y]
+        poly_temp[:, 0] = np.clip(poly_temp[:, 0], 0 + EPS, shape[0] - EPS)
+        poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
+        poly_temp = np.floor(poly_temp).astype(np.int32)
+
+        pnum, cnum = poly_temp.shape
+
+        idxnext_p = (np.arange(pnum, dtype=np.int32) + 1) % pnum  # Hypothesis Enhanced Features
+        pgtnext_px2 = poly_temp[idxnext_p]
+        
+        edgelen_p = np.sqrt(np.sum((pgtnext_px2 - poly_temp) ** 2, axis=1))
+ 
+        return edgelen_p.sum() > 0.0
+
+    @staticmethod
+    def bbox_check(bbox):
+        _, _, w, h = bbox
+        if w == 0 or h == 0:
+            return False
+        return True
 
     def make_polygon(self, poly, shape, bbox):  # TODO: check if x and y are right not y, x
         EPS = 1e-7
@@ -57,30 +83,33 @@ class COCODataset(GeneralizedDataset):
         # convert coordinates from global to local i.e. [0, 1]
         x_min, y_min, w, h = bbox
 
-        x_max = x_min + w
-        y_max = y_min + h
+        # x_max = x_min + w
+        # y_max = y_min + h
 
-        x_min = max(0, x_min)
-        x_max = min(shape[1] - 1, x_max)
+        # x_min = max(0, x_min)
+        # x_max = min(shape[1] - 1, x_max)
 
-        y_center = y_min + (1 + h) / 2.  # Bounding box finishing Layer
+        # y_center = y_min + (1 + h) / 2.  # Bounding box finishing Layer
 
-        patch_w = x_max - x_min
-        # NOTE: Different from before
+        # patch_w = x_max - x_min
+        # # NOTE: Different from before
 
-        y_min = int(np.floor(y_center - patch_w / 2.))
-        y_max = y_min + patch_w
+        # y_min = int(np.floor(y_center - patch_w / 2.))
+        # y_max = y_min + patch_w
 
-        top_margin = max(0, y_min) - y_min
+        # top_margin = max(0, y_min) - y_min
 
-        y_min = max(0, y_min)
-        y_max = min(shape[0] - 1, y_max)
+        # y_min = max(0, y_min)
+        # y_max = min(shape[0] - 1, y_max)
 
         xs = arr_polygon[:, 0]
         ys = arr_polygon[:, 1]
 
-        xs = (xs - x_min) / float(patch_w)
-        ys = (ys - (y_min - top_margin)) / float(patch_w)
+        # xs = (xs - x_min) / float(patch_w)
+        # ys = (ys - (y_min - top_margin)) / float(patch_w)
+
+        xs = (xs - x_min) / float(w)
+        ys = (ys - y_min) / float(h)  # TODO: double-check x, y, w, h
 
         xs = np.clip(xs, 0 + EPS, 1 - EPS)  # between epsilon and 1-epsilon
         ys = np.clip(ys, 0 + EPS, 1 - EPS)
@@ -139,8 +168,11 @@ class COCODataset(GeneralizedDataset):
                     id = -1
                     edgeid = edgeidxsort_p[id]
                     edgenum[edgeid] += newpnum - edgenumsum
-
+            
             assert np.sum(edgenum) == newpnum
+            # if np.sum(edgenum) != newpnum:
+            #     print('edgenum: {}, newpnum: {}'.format(np.sum(edgenum), newpnum))
+            #     import pdb; pdb.set_trace()  # the problem is that all the points in pgtnp_px2 are the same point!!!
 
             psample = []
             for i in range(pnum):
@@ -166,15 +198,19 @@ class COCODataset(GeneralizedDataset):
 
         if len(anns) > 0:
             for ann in anns:
-                boxes.append(ann['bbox'])
-                labels.append(ann["category_id"])
                 mask = self.coco.annToMask(ann)
                 mask = torch.tensor(mask, dtype=torch.uint8)
-                masks.append(mask)
                 poly = ann['segmentation'][0]
-
+                # sanity check: if it would be a real polygon in image or not
+                if self.poly_check(poly, mask.shape) == False:
+                    continue
+                if self.bbox_check(ann['bbox']) == False:
+                    continue
                 polygon = self.make_polygon(poly, mask.shape, ann['bbox'])
                 polygons.append(polygon)
+                boxes.append(ann['bbox'])
+                masks.append(mask)
+                labels.append(ann["category_id"])
 
             boxes = torch.tensor(boxes, dtype=torch.float32)
             boxes = self.convert_to_xyxy(boxes)

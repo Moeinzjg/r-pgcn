@@ -74,8 +74,7 @@ class Transformer:
 
         if 'polygons' in result:
             polygon = result['polygons']
-            polygon[:, 0] = polygon[:, 0] * ori_image_shape[0]
-            polygon[:, 1] = polygon[:, 1] * ori_image_shape[1]
+            polygon = paste_polygons_in_image(polygon, mask, box, 1, ori_image_shape)
             result['polygons'] = polygon
 
         return result
@@ -122,3 +121,26 @@ def paste_masks_in_image(mask, box, padding, image_shape):
 
         im[y1:y2, x1:x2] = m[(y1 - b[1]):(y2 - b[1]), (x1 - b[0]):(x2 - b[0])]
     return im_mask
+
+
+def paste_polygons_in_image(polygon, mask, box, padding, image_shape):
+    mask, box = expand_detection(mask, box, padding)
+
+    N = mask.shape[0]
+    for m, b, p in zip(mask, box, polygon):
+        b = b.tolist()
+        w = max(b[2] - b[0], 1)
+        h = max(b[3] - b[1], 1)
+
+        x1 = max(b[0], 0)
+        y1 = max(b[1], 0)
+        # x2 = min(b[2], image_shape[1])
+        # y2 = min(b[3], image_shape[0])
+
+        x_p = torch.minimum(torch.maximum(p[:, 0], torch.zeros_like(p[:, 0])), torch.ones_like(p[:, 0]))
+        y_p = torch.minimum(torch.maximum(p[:, 1], torch.zeros_like(p[:, 1])), torch.ones_like(p[:, 1]))
+
+        p[:, 0] = x_p * w + x1
+        p[:, 1] = y_p * h + y1
+
+    return polygon

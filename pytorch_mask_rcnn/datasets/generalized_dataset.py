@@ -74,6 +74,8 @@ class GeneralizedDataset:
                 assert len(boxes) == len(labels), "{}: len(boxes) != len(labels)".format(i)
                 assert len(boxes) == len(masks), "{}: len(boxes) != len(masks)".format(i)
                 assert len(boxes) == len(polygons), "{}: len(boxes) != len(polygons)".format(i)
+                assert len(labels) == len(polygons), "{}: len(labels) != len(polygons)".format(i)
+                assert labels.shape[0] == polygons.shape[0], "{}: labels.shape[0] != polygons.shape[0]".format(i)
 
                 out.append((img_id, self._aspect_ratios[i]))
             except AssertionError as e:

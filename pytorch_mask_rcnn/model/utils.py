@@ -169,8 +169,11 @@ def gather_feature(id, feature):
     feature_id = id.unsqueeze_(2).long().expand(id.size(0),
                                                 id.size(1),
                                                 feature.size(2)).detach()
-
-    cnn_out = torch.gather(feature, 1, feature_id).float()
+    cnn_out = torch.FloatTensor()
+    try:
+        cnn_out = torch.gather(feature, 1, feature_id).float()
+    except RuntimeError:
+        print(feature_id.shape, feature.shape, id.shape)
 
     return cnn_out
 

@@ -37,12 +37,11 @@ for i, (image, target) in enumerate(d):
     
     prediction = {k: v.cpu() for k, v in result.items()}
 
-    pred_edges = prediction['edges'].numpy()
-    pred_vertices = prediction['vertices'].numpy()
+    # pred_edges = prediction['edges'].numpy()
+    # pred_vertices = prediction['vertices'].numpy()
 
-    gt_edges = target['edges'].cpu().numpy()
-    gt_vertices = target['vertices'].cpu().numpy()
-    import pdb; pdb.set_trace()
+    # gt_edges = target['edges'].cpu().numpy()
+    # gt_vertices = target['vertices'].cpu().numpy()
     # Average Precision
 
 

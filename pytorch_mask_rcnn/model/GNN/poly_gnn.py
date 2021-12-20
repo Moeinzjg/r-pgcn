@@ -112,10 +112,10 @@ class PolyGNN(nn.Module):
             N3_id = X1 + Y0 * grid
             N4_id = X1 + Y1 * grid
 
-            M_00 = utils.gather_feature(N1_id, cnns[i])
-            M_01 = utils.gather_feature(N2_id, cnns[i])
-            M_10 = utils.gather_feature(N3_id, cnns[i])
-            M_11 = utils.gather_feature(N4_id, cnns[i])
+            M_00 = utils.gather_feature(N1_id, cnns)
+            M_01 = utils.gather_feature(N2_id, cnns)
+            M_10 = utils.gather_feature(N3_id, cnns)
+            M_11 = utils.gather_feature(N4_id, cnns)
             cnn_out = w_00.unsqueeze(2) * M_00 + \
                       w_01.unsqueeze(2) * M_01 + \
                       w_10.unsqueeze(2) * M_10 + \
@@ -130,9 +130,9 @@ class PolyGNN(nn.Module):
 
         cnn_out_feature = []
         for i in range(ids.size()[1]):
-            id = ids[:, i, :]
+            this_id = ids[:, i, :]
 
-            cnn_out = utils.gather_feature(id, features[i])
+            cnn_out = utils.gather_feature(this_id, features)
             cnn_out_feature.append(cnn_out)
 
         concat_features = torch.cat(cnn_out_feature, dim=2)
