@@ -10,7 +10,7 @@ import pytorch_mask_rcnn as pmr
 def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() and args.use_cuda else "cpu")
     cuda = device.type == "cuda"
-    if cuda: 
+    if cuda:
         pmr.get_gpu_prop(show=True)
     print("\ndevice: {}".format(device))
 
@@ -32,13 +32,19 @@ def main(args):
     print("\nevaluating...\n")
 
     B = time.time()
-    eval_output, iter_eval = pmr.evaluate(model, d_test, device, args)
+    eval_output, rpolygcn_eval_output, iter_eval, poly_iou = pmr.evaluate(model, d_test, device, args)
     B = time.time() - B
     for bf in eval_output.buffer:
         print(bf)
     print(eval_output.get_AP())
+    print('---------------------------- R-PolyGCN ----------------------------')
+    for bf in rpolygcn_eval_output.buffer:
+        print(bf)
+    print(rpolygcn_eval_output.get_AP())
     if iter_eval is not None:
         print("\nTotal time of this evaluation: {:.1f} s, speed: {:.1f} imgs/s".format(B, 1 / iter_eval))
+    if poly_iou is not None:
+        print("\n Average IOU of polygons is: {:.2f}".format(sum(poly_iou) / len(poly_iou)))
 
 
 if __name__ == "__main__":
@@ -46,11 +52,12 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", default="coco")
     parser.add_argument("--data-dir", default="../Vegas_coco_random_splits")
     parser.add_argument("--ckpt-path", default="maskrcnn_coco-25.pth")
-    parser.add_argument("--iters", type=int, default=3)  # number of iterations, minus means the entire dataset
+    parser.add_argument("--iters", type=int, default=-1)  # number of iterations, minus means the entire dataset
     args = parser.parse_args()  # [] is needed if you're using Jupyter Notebook.
 
     args.use_cuda = True
     args.results = os.path.join(os.path.dirname(args.ckpt_path), "maskrcnn_results.pth")
+    args.rpolygcn_results = os.path.join(os.path.dirname(args.ckpt_path), "rpolygcn_results.pth")
 
     main(args)
 

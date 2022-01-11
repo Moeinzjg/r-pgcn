@@ -76,7 +76,7 @@ class COCODataset(GeneralizedDataset):
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
         poly_temp = np.floor(poly_temp).astype(np.int32)
 
-        polygon = self.uniform_sample(poly_temp, self.num_points)
+        polygon = self.uniform_sample(poly_temp, self.num_points)  #TODO: check the performance of uniform_sample
         arr_polygon = np.ones((self.num_points, 2), np.float32) * 0.
         arr_polygon[:, :] = polygon
 
@@ -118,6 +118,17 @@ class COCODataset(GeneralizedDataset):
         arr_polygon[:, 1] = ys
 
         return arr_polygon
+
+    @staticmethod
+    def make_global_polygon(poly, shape):
+        EPS = 1e-7
+        poly_glob = poly.copy()
+        poly_glob = np.array(poly_glob).reshape(-1, 2)  # [x, y]
+        poly_glob[:, 0] = np.clip(poly_glob[:, 0], 0 + EPS, shape[0] - EPS)
+        poly_glob[:, 1] = np.clip(poly_glob[:, 1], 0 + EPS, shape[1] - EPS)
+        poly_glob = np.floor(poly_glob).astype(np.int32)
+
+        return poly_glob
 
     def uniform_sample(self, pgtnp_px2, newpnum):
 
@@ -193,8 +204,9 @@ class COCODataset(GeneralizedDataset):
         anns = self.coco.loadAnns(ann_ids)
         boxes = []
         labels = []
-        polygons = []
         masks = []
+        polygons = []
+        global_polygons = []
 
         if len(anns) > 0:
             for ann in anns:
@@ -208,6 +220,8 @@ class COCODataset(GeneralizedDataset):
                     continue
                 polygon = self.make_polygon(poly, mask.shape, ann['bbox'])
                 polygons.append(polygon)
+                global_polygon = self.make_global_polygon(poly, mask.shape)
+                global_polygons.append(global_polygon)
                 boxes.append(ann['bbox'])
                 masks.append(mask)
                 labels.append(ann["category_id"])
@@ -218,5 +232,5 @@ class COCODataset(GeneralizedDataset):
             masks = torch.stack(masks)
             polygons = torch.tensor(polygons, dtype=torch.float32)
 
-        target = dict(image_id=torch.tensor([img_id]), boxes=boxes, labels=labels, masks=masks, polygons=polygons)
+        target = dict(image_id=torch.tensor([img_id]), boxes=boxes, labels=labels, masks=masks, polygons=polygons, global_polygons=global_polygons)
         return target

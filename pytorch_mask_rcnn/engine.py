@@ -3,9 +3,9 @@ import time
 
 import torch
 
-from .utils import Meter, TextArea
+from .utils import Meter, TextArea, iou_from_poly, mask_from_poly
 try:
-    from .datasets import CocoEvaluator, prepare_for_coco
+    from .datasets import CocoEvaluator, prepare_for_coco, prepare_for_coco_polygon
 except:
     pass
 
@@ -28,11 +28,11 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
             r = num_iters / args.warmup_iters
             for j, p in enumerate(optimizer.param_groups):
                 p["lr"] = r * args.lr_epoch
-                   
+
         image = image.to(device)
         target = {k: v.to(device) for k, v in target.items()}
         S = time.time()
-        
+
         losses = model(image, target)
         total_loss = sum(losses.values())
         m_m.update(time.time() - S)
@@ -40,7 +40,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
         S = time.time()
         total_loss.backward()
         b_m.update(time.time() - S)
-        
+
         optimizer.step()
         optimizer.zero_grad()
 
@@ -59,21 +59,26 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
     A = time.time() - A
     print("iter: {:.1f}, total: {:.1f}, model: {:.1f}, backward: {:.1f}".format(1000*A/iters,1000*t_m.avg,1000*m_m.avg,1000*b_m.avg))
     return A / iters
-            
 
-def evaluate(model, data_loader, device, args, generate=True):
+
+def evaluate(model, data_loader, device, args, generate=True, poly=False):
     iter_eval = None
+    poly_iou = None
     if generate:
-        iter_eval = generate_results(model, data_loader, device, args)
+        iter_eval, poly_iou = generate_results(model, data_loader, device, args, poly=True)
 
     dataset = data_loader
     iou_types = ["bbox", "segm"]
     coco_evaluator = CocoEvaluator(dataset.coco, iou_types)
-
+    coco_evaluator_rpolygcn = CocoEvaluator(dataset.coco, iou_types)
+    
     results = torch.load(args.results, map_location="cpu")
+    rpolygcn_results = torch.load(args.rpolygcn_results, map_location="cpu")
 
     S = time.time()
-    coco_evaluator.accumulate(results)
+    eval_results = coco_evaluator.accumulate(results)
+    eval_rpolygcn_results = coco_evaluator_rpolygcn.accumulate(rpolygcn_results)
+
     print("accumulate: {:.1f}s".format(time.time() - S))
 
     # collect outputs of buildin function print
@@ -84,25 +89,38 @@ def evaluate(model, data_loader, device, args, generate=True):
 
     output = sys.stdout
     sys.stdout = temp
+    # if poly:
+    temp = sys.stdout
+    sys.stdout = TextArea()
 
-    return output, iter_eval
+    coco_evaluator_rpolygcn.summarize()
+
+    output_rpolygcn = sys.stdout
+    sys.stdout = temp
+
+    return output, output_rpolygcn, iter_eval, poly_iou
 
 
 # generate results file
 @torch.no_grad()
-def generate_results(model, data_loader, device, args):
+def generate_results(model, data_loader, device, args, poly=False):
     iters = len(data_loader) if args.iters < 0 else args.iters
         
     t_m = Meter("total")
     m_m = Meter("model")
     coco_results = []
+    coco_results_poly = []
+    if poly:
+        poly_iou = []
+    else:
+        poly_iou = None
     model.eval()
     A = time.time()
     for i, (image, target) in enumerate(data_loader):
         T = time.time()
         
         image = image.to(device)
-        target = {k: v.to(device) for k, v in target.items()}
+        target = {k: v for k, v in target.items()}
 
         S = time.time()
         #torch.cuda.synchronize()
@@ -110,7 +128,21 @@ def generate_results(model, data_loader, device, args):
         m_m.update(time.time() - S)
 
         prediction = {target["image_id"].item(): {k: v.cpu() for k, v in output.items()}}
+        prediction[target["image_id"].item()].update({'masks_from_polygons': mask_from_poly(output['polygons'].cpu(),
+                                                                                            image.shape[2],
+                                                                                            image.shape[1])})
+
+        # coco evaluation on masks
         coco_results.extend(prepare_for_coco(prediction))
+        # on masks from polygons
+        coco_results_poly.extend(prepare_for_coco_polygon(prediction))
+
+        # evaluation on polygons
+        if poly:
+            pred = output['polygons']
+            gt = target['global_polygons']
+            iou, _ = iou_from_poly(pred, gt, image.shape[2], image.shape[1])
+            poly_iou.append(iou)
 
         t_m.update(time.time() - T)
         if i >= iters - 1:
@@ -119,6 +151,8 @@ def generate_results(model, data_loader, device, args):
     A = time.time() - A
     print("iter: {:.1f}, total: {:.1f}, model: {:.1f}".format(1000*A/iters,1000*t_m.avg,1000*m_m.avg))
     torch.save(coco_results, args.results)
+    if poly:
+        torch.save(coco_results, args.rpolygcn_results)
 
-    return A / iters
+    return A / iters, poly_iou
 
