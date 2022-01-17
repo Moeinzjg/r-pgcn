@@ -107,7 +107,7 @@ class MaskRCNN(nn.Module):
         rpn_pre_nms_top_n = dict(training=rpn_pre_nms_top_n_train, testing=rpn_pre_nms_top_n_test)
         rpn_post_nms_top_n = dict(training=rpn_post_nms_top_n_train, testing=rpn_post_nms_top_n_test)
         self.rpn = RegionProposalNetwork(
-             rpn_anchor_generator, rpn_head, 
+             rpn_anchor_generator, rpn_head,
              rpn_fg_iou_thresh, rpn_bg_iou_thresh,
              rpn_num_samples, rpn_positive_fraction,
              rpn_reg_weights,
@@ -121,21 +121,24 @@ class MaskRCNN(nn.Module):
         mid_channels = 1024
         box_predictor = FastRCNNPredictor(in_channels, mid_channels, num_classes)
 
-        self.head = RoIHeads(
-             box_roi_pool, box_predictor,
-             box_fg_iou_thresh, box_bg_iou_thresh,
-             box_num_samples, box_positive_fraction,
-             box_reg_weights,
-             box_score_thresh, box_nms_thresh, box_num_detections)
+        self.head = RoIHeads(box_roi_pool, box_predictor,
+                             box_fg_iou_thresh, box_bg_iou_thresh,
+                             box_num_samples, box_positive_fraction,
+                             box_reg_weights, box_score_thresh,
+                             box_nms_thresh, box_num_detections)
 
         self.head.mask_roi_pool = RoIAlign(output_size=(14, 14), sampling_ratio=2)
+        self.head.augmentation_roi_pool = RoIAlign(output_size=(28, 28), sampling_ratio=2)
 
         layers_mask = (256, 256, 256, 256)
         dim_reduced_mask = 256
-        # TODO: in Kang's we have one conv(256, 2) followed by a linear layer
 
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, layers_mask, dim_reduced_mask, num_classes)
-        self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=14)  # TODO: it might be 28
+        # self.head.edge_predictor = EdgeRCNNPredictor(out_channels, num_classes)
+        # self.head.vertex_predictor = VertexRCNNPredictor(out_channels, num_classes)
+        self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=28)
+        self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256, internal=2)
+        self.head.poly_augmentor = PolyAugmentor(out_channels)
 
         # ------------ Transformer --------------------------
         self.transformer = Transformer(
@@ -207,6 +210,118 @@ class MaskRCNNPredictor(nn.Sequential):
                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
 
 
+# class EdgeRCNNPredictor(nn.Sequential):
+#     def __init__(self, in_channels, num_classes):
+#         """
+#         Arguments:
+#             in_channels (int)
+#             layers (Tuple[int])
+#             dim_reduced (int)
+#             num_classes (int)
+#         """
+
+#         d = OrderedDict()
+
+#         d['edge_conv'] = nn.Conv2d(in_channels, 2, 3, 1, 1)
+#         d['edge_relu'] = nn.ReLU(inplace=True)
+
+#         d['edge_conv_trans'] = nn.ConvTranspose2d(256, 256, 2, 2, 0)
+#         d['relu_trans'] = nn.ReLU(inplace=True)
+#         d['edge_fcn_logits'] = nn.Conv2d(256, num_classes, 1, 1, 0)
+#         super().__init__(d)
+
+#         for name, param in self.named_parameters():
+#             if 'weight' in name:
+#                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
+
+
+# class VertexRCNNPredictor(nn.Sequential):
+#     def __init__(self, in_channels, num_classes):
+#         """
+#         Arguments:
+#             in_channels (int)
+#             layers (Tuple[int])
+#             dim_reduced (int)
+#             num_classes (int)
+#         """
+
+#         d = OrderedDict()
+
+#         d['vertex_fcn1'] = nn.Conv2d(in_channels, 256, 3, 1, 1)
+#         d['vertex_relu1'] = nn.ReLU(inplace=True)
+
+#         d['vertex_conv_trans'] = nn.ConvTranspose2d(256, 256, 2, 2, 0)
+#         d['veretx_relu_trans'] = nn.ReLU(inplace=True)
+#         d['vertex_fcn_logits'] = nn.Conv2d(256, num_classes, 1, 1, 0)
+#         super().__init__(d)
+
+#         for name, param in self.named_parameters():
+#             if 'weight' in name:
+#                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
+
+
+class FeatureAugmentor(nn.Module):
+    def __init__(self, feats_dim=28, feats_channels=256, internal=2):
+        super(FeatureAugmentor, self).__init__()
+        self.grid_size = feats_dim
+
+        self.edge_conv = nn.Conv2d(in_channels=feats_channels,
+                                   out_channels=internal,
+                                   kernel_size=3,
+                                   padding=1)
+
+        self.edge_fc = nn.Linear(in_features=feats_dim**2 * internal,
+                                 out_features=feats_dim**2)
+
+        self.vertex_conv = nn.Conv2d(in_channels=feats_channels,
+                                     out_channels=internal,
+                                     kernel_size=3,
+                                     padding=1)
+
+        self.vertex_fc = nn.Linear(in_features=feats_dim**2 * internal,
+                                   out_features=feats_dim**2)
+
+    def forward(self, feats, temperature=0.0, beam_size=1):
+        """
+        if temperature < 0.01, use greedy
+        else, use temperature
+        """
+        batch_size = feats.size(0)
+        conv_edge = self.edge_conv(feats)
+        conv_edge = F.relu(conv_edge, inplace=True)
+        edge_logits = self.edge_fc(conv_edge.view(batch_size, -1))
+
+        conv_vertex = self.vertex_conv(feats)
+        conv_vertex = F.relu(conv_vertex)
+        vertex_logits = self.vertex_fc(conv_vertex.view(batch_size, -1))
+
+        edge_logits = edge_logits.view((-1, self.grid_size, self.grid_size)).unsqueeze(1)
+        vertex_logits = vertex_logits.view((-1, self.grid_size, self.grid_size)).unsqueeze(1)
+
+        return edge_logits, vertex_logits
+
+
+class PolyAugmentor(nn.Sequential):
+    def __init__(self, in_channels):
+        """
+        Equivalent to Edge Annotation in Kang's
+        Arguments:
+            in_channels (int)
+        """
+
+        d = OrderedDict()
+
+        d['cnn1'] = nn.Conv2d(in_channels + 2, 256, 3, 1, 1, bias=False)
+        d['bn1'] = nn.BatchNorm2d(256)
+        d['relu1'] = nn.ReLU(inplace=True)
+
+        d['cnn2'] = nn.Conv2d(256, 256, 3, 1, 1, bias=False)
+        d['bn2'] = nn.BatchNorm2d(256)
+        d['relu2'] = nn.ReLU(inplace=True)
+
+        super().__init__(d)
+
+
 class ResBackbone(nn.Module):
     def __init__(self, backbone_name, pretrained):
         super().__init__()
@@ -252,7 +367,7 @@ def maskrcnn_resnet50(pretrained, num_classes, pretrained_backbone=True):
     backbone = ResBackbone('resnet50', pretrained_backbone)
     model = MaskRCNN(backbone, num_classes)
 
-    if pretrained:
+    if pretrained:  # TODO: Add resenet101
         model_urls = {
             'maskrcnn_resnet50_fpn_coco':
                 'https://download.pytorch.org/models/maskrcnn_resnet50_fpn_coco-bf2d0c1e.pth',

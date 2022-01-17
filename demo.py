@@ -4,7 +4,7 @@ import pytorch_mask_rcnn as pmr
 
 use_cuda = True
 dataset = "coco"
-ckpt_path = "maskrcnn_coco-25.pth"
+ckpt_path = "maskrcnn_coco-25.pth"  #  !!: set it also for rpolygcn results 
 data_dir = "../Vegas_coco_random_splits/"
 
 device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
@@ -28,23 +28,21 @@ for p in model.parameters():
     p.requires_grad_(False)
 
 # Quantitative measures for edge and vertex
-for i, (image, target) in enumerate(d):
-    image = image.to(device)[0]
-    target = {k: v.to(device) for k, v in target.items()}
+# for i, (image, target) in enumerate(d):
+#     image = image.to(device)[0]
+#     target = {k: v.to(device) for k, v in target.items()}
 
-    with torch.no_grad():
-        result = model(image)
+#     with torch.no_grad():
+#         result = model(image)
     
-    prediction = {k: v.cpu() for k, v in result.items()}
+#     prediction = {k: v.cpu() for k, v in result.items()}
 
-    # pred_edges = prediction['edges'].numpy()
-    # pred_vertices = prediction['vertices'].numpy()
+#     # pred_edges = prediction['edges'].numpy()
+#     # pred_vertices = prediction['vertices'].numpy()
 
-    # gt_edges = target['edges'].cpu().numpy()
-    # gt_vertices = target['vertices'].cpu().numpy()
-    # Average Precision
-
-
+#     # gt_edges = target['edges'].cpu().numpy()
+#     # gt_vertices = target['vertices'].cpu().numpy()
+#     # Average Precision
 
 # Visualization
 num_images = 6
@@ -55,8 +53,6 @@ for i, (image, target) in enumerate(d):
 
     with torch.no_grad():
         result = model(image)
-    # TODO: add quatitative metrics for edge and vertex
-    # print(result)
     pmr.show(image, result, ds.classes, "./images/output{}.jpg".format(i))
 
     if i >= num_images - 1:

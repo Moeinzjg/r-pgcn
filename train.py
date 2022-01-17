@@ -12,7 +12,7 @@ import pytorch_mask_rcnn as pmr
     
 def main(args):
     device = torch.device("cuda" if torch.cuda.is_available() and args.use_cuda else "cpu")
-    if device.type == "cuda": 
+    if device.type == "cuda":
         pmr.get_gpu_prop(show=True)
     print("\ndevice: {}".format(device))
         
@@ -29,7 +29,7 @@ def main(args):
     # -------------------------------------------------------------------------- #
 
     print(args)
-    num_classes = max(d_train.dataset.classes) + 1 # including background class
+    num_classes = max(d_train.dataset.classes) + 1  # including background class
     model = pmr.maskrcnn_resnet50(False, num_classes).to(device)  # TODO: enable pretrained again
     
     params = [p for p in model.parameters() if p.requires_grad]
@@ -68,13 +68,14 @@ def main(args):
         iter_train = pmr.train_one_epoch(model, optimizer, d_train, device, epoch, args, writer)
         A = time.time() - A
         B = time.time()
-        eval_output, iter_eval = pmr.evaluate(model, d_test, device, args)  # TODO: add evaluation metrics for edge/vertex/polygon
+        eval_output, rpolygcn_eval_output, iter_eval, _ = pmr.evaluate(model, d_test, device, args)
         B = time.time() - B
 
         trained_epoch = epoch + 1
         print("training: {:.1f} s, evaluation: {:.1f} s".format(A, B))
         pmr.collect_gpu_info("maskrcnn", [1 / iter_train, 1 / iter_eval])
-        print(eval_output.get_AP())
+        print('maskrcnn', eval_output.get_AP())
+        print('polygon', rpolygcn_eval_output.get_AP())
 
         pmr.save_ckpt(model, optimizer, trained_epoch, args.ckpt_path, eval_info=str(eval_output))
 
@@ -103,6 +104,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", default="E:/PyTorch/data/coco2017")
     parser.add_argument("--ckpt-path")
     parser.add_argument("--results")
+    parser.add_argument("--rpolygcn_results")
     
     parser.add_argument("--seed", type=int, default=3)
     parser.add_argument('--lr-steps', nargs="+", type=int, default=[6, 7])
@@ -116,11 +118,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if args.lr is None:
-        args.lr = 0.02 * 1 / 16 # lr should be 'batch_size / 16 * 0.02'
+        args.lr = 0.02 * 1 / 16  # lr should be 'batch_size / 16 * 0.02'
     if args.ckpt_path is None:
         args.ckpt_path = "./maskrcnn_{}.pth".format(args.dataset)
     if args.results is None:
         args.results = os.path.join(os.path.dirname(args.ckpt_path), "maskrcnn_results.pth")
+    if args.rpolygcn_results is None:
+        args.rpolygcn_results = os.path.join(os.path.dirname(args.ckpt_path), "rpolygcn_results.pth")
     
     main(args)
     

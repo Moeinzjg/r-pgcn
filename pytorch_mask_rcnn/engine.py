@@ -30,6 +30,7 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
                 p["lr"] = r * args.lr_epoch
 
         image = image.to(device)
+        target.pop('global_polygons')
         target = {k: v.to(device) for k, v in target.items()}
         S = time.time()
 
@@ -49,8 +50,8 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
 
             # log into tensorboard
             for k in losses.keys():
-                writer.add_scalar(k, losses[k], num_iters) 
-            writer.add_scalar('total_loss', total_loss, num_iters)   
+                writer.add_scalar(k, losses[k], num_iters)
+            writer.add_scalar('total_loss', total_loss, num_iters)
 
         t_m.update(time.time() - T)
         if i >= iters - 1:
@@ -70,14 +71,14 @@ def evaluate(model, data_loader, device, args, generate=True, poly=False):
     dataset = data_loader
     iou_types = ["bbox", "segm"]
     coco_evaluator = CocoEvaluator(dataset.coco, iou_types)
-    coco_evaluator_rpolygcn = CocoEvaluator(dataset.coco, iou_types)
-    
+    coco_evaluator_rpolygcn = CocoEvaluator(dataset.coco, iou_types[1])
+
     results = torch.load(args.results, map_location="cpu")
     rpolygcn_results = torch.load(args.rpolygcn_results, map_location="cpu")
 
     S = time.time()
-    eval_results = coco_evaluator.accumulate(results)
-    eval_rpolygcn_results = coco_evaluator_rpolygcn.accumulate(rpolygcn_results)
+    coco_evaluator.accumulate(results)
+    coco_evaluator_rpolygcn.accumulate(rpolygcn_results)
 
     print("accumulate: {:.1f}s".format(time.time() - S))
 
@@ -152,7 +153,7 @@ def generate_results(model, data_loader, device, args, poly=False):
     print("iter: {:.1f}, total: {:.1f}, model: {:.1f}".format(1000*A/iters,1000*t_m.avg,1000*m_m.avg))
     torch.save(coco_results, args.results)
     if poly:
-        torch.save(coco_results, args.rpolygcn_results)
+        torch.save(coco_results_poly, args.rpolygcn_results)
 
     return A / iters, poly_iou
 

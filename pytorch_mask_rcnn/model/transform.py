@@ -49,6 +49,16 @@ class Transformer:
             mask = F.interpolate(mask[None].float(), size=size)[0].byte()
             target['masks'] = mask
 
+        if 'edges' in target:
+            edge = target['edges']
+            edge = F.interpolate(edge[None].float(), size=size)[0].byte()
+            target['edges'] = edge
+
+        if 'vertices' in target:
+            vertex = target['vertices']
+            vertex = F.interpolate(vertex[None].float(), size=size)[0].byte()
+            target['vertices'] = vertex
+
         return image, target
 
     def batched_image(self, image, stride=32):
@@ -71,6 +81,16 @@ class Transformer:
             mask = result['masks']
             mask = paste_masks_in_image(mask, box, 1, ori_image_shape)
             result['masks'] = mask
+
+        if 'edges' in result:
+            edge = result['edges']
+            edge = paste_masks_in_image(edge, box, 1, ori_image_shape)
+            result['edges'] = edge
+
+        if 'vertices' in result:
+            vertex = result['vertices']
+            vertex = paste_masks_in_image(vertex, box, 1, ori_image_shape)
+            result['vertices'] = vertex
 
         if 'polygons' in result:
             polygon = result['polygons']

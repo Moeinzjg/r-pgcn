@@ -276,25 +276,25 @@ class Visualizer:
             else:
                 num_instances = len(polygons)
 
-        if edges is not None:
-            if edges.is_floating_point():
-                edges = edges > 0.5
-            m = np.asarray(edges.cpu())
-            edges = [GenericEdge(x, self.output.height, self.output.width) for x in m]
-            if num_instances:
-                assert len(edges) == num_instances
-            else:
-                num_instances = len(edges)
+        # if edges is not None:
+        #     if edges.is_floating_point():
+        #         edges = edges > 0.5
+        #     m = np.asarray(edges.cpu())
+        #     edges = [GenericEdge(x, self.output.height, self.output.width) for x in m]
+        #     if num_instances:
+        #         assert len(edges) == num_instances
+        #     else:
+        #         num_instances = len(edges)
 
-        if vertices is not None:
-            if vertices.is_floating_point():
-                vertices = vertices > 0.5
-            m = np.asarray(vertices.cpu())
-            vertices = [GenericVertex(x, self.output.height, self.output.width) for x in m]
-            if num_instances:
-                assert len(vertices) == num_instances
-            else:
-                num_instances = len(vertices)
+        # if vertices is not None:
+        #     if vertices.is_floating_point():
+        #         vertices = vertices > 0.5
+        #     m = np.asarray(vertices.cpu())
+        #     vertices = [GenericVertex(x, self.output.height, self.output.width) for x in m]
+        #     if num_instances:
+        #         assert len(vertices) == num_instances
+        #     else:
+        #         num_instances = len(vertices)
 
         if labels is not None:
             assert len(labels) == num_instances
@@ -323,11 +323,11 @@ class Visualizer:
             # vertices = [vertices[idx] for idx in sorted_idxs] if vertices is not None else None
             assigned_colors = [assigned_colors[idx] for idx in sorted_idxs]
 
-        if edges is not None:
-            self.all_edges = edges[0].edge.copy()
+        # if edges is not None:
+        #     self.all_edges = edges[0].edge.copy()
 
-        if vertices is not None:
-            self.all_vertices = vertices[0].vertex.copy()
+        # if vertices is not None:
+        #     self.all_vertices = vertices[0].vertex.copy()
 
         for i in range(num_instances):
             color = assigned_colors[i]
@@ -344,13 +344,13 @@ class Visualizer:
                 polygon = polygons[i].polygon
                 self.draw_polygon(polygon, [1.0, 1.0, 1.0], edge_color=[1.0, 0.0, 0.0], alpha=alpha, mask=False)
 
-            if edges is not None:
-                self.all_edges[edges[i].edge == 1] = 1
+            # if edges is not None:
+            #     self.all_edges[edges[i].edge == 1] = 1
 
-            if vertices is not None:
-                points = vertices[i].points
-                if points[1]:
-                    self.draw_polypoint(points[0].transpose(), color, alpha=alpha)
+            # if vertices is not None:
+            #     points = vertices[i].points
+            #     if points[1]:
+            #         self.draw_polypoint(points[0].transpose(), color, alpha=alpha)
 
             if labels is not None:
                 # first get a box
@@ -493,22 +493,22 @@ class Visualizer:
         ax.axis("off")
 
         # plot edge prediction
-        if False:
-            ax2 = self.fig.add_subplot(132)
-            img_out2 = self.img.copy()
-            img_out2[self.all_edges == 1] = [255, 0, 0]  # add edges
-            ax2.imshow(img_out2.astype("uint8"))
-            ax2.set_title("edge prediction")
-            ax2.axis("off")
+        # if False:
+        #     ax2 = self.fig.add_subplot(132)
+        #     img_out2 = self.img.copy()
+        #     img_out2[self.all_edges == 1] = [255, 0, 0]  # add edges
+        #     ax2.imshow(img_out2.astype("uint8"))
+        #     ax2.set_title("edge prediction")
+        #     ax2.axis("off")
 
-        # plot vertex prediction
-        if False:
-            ax3 = self.fig.add_subplot(133)
-            img_out3 = self.img.copy()
-            img_out3[self.all_vertices == 1] = [255, 0, 0]  # add vertices
-            ax3.imshow(img_out3.astype("uint8"))
-            ax3.set_title("vertex prediction")
-            ax3.axis("off")
+        # # plot vertex prediction
+        # if False:
+        #     ax3 = self.fig.add_subplot(133)
+        #     img_out3 = self.img.copy()
+        #     img_out3[self.all_vertices == 1] = [255, 0, 0]  # add vertices
+        #     ax3.imshow(img_out3.astype("uint8"))
+        #     ax3.set_title("vertex prediction")
+        #     ax3.axis("off")
 
         plt.show()
 

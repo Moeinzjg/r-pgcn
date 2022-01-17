@@ -67,15 +67,23 @@ class GeneralizedDataset:
             boxes = target["boxes"]
             labels = target["labels"]
             masks = target["masks"]
+            edges = target["edges"]
+            vertices = target["vertices"]
             polygons = target["polygons"]
+            global_polygons = target["global_polygons"]
 
             try:
                 assert len(boxes) > 0, "{}: len(boxes) = 0".format(i)
                 assert len(boxes) == len(labels), "{}: len(boxes) != len(labels)".format(i)
                 assert len(boxes) == len(masks), "{}: len(boxes) != len(masks)".format(i)
+                assert len(boxes) == len(edges), "{}: len(boxes) != len(edges)".format(i)
+                assert len(boxes) == len(vertices), "{}: len(boxes) != len(vertices)".format(i)
                 assert len(boxes) == len(polygons), "{}: len(boxes) != len(polygons)".format(i)
                 assert len(labels) == len(polygons), "{}: len(labels) != len(polygons)".format(i)
                 assert labels.shape[0] == polygons.shape[0], "{}: labels.shape[0] != polygons.shape[0]".format(i)
+                assert len(boxes) == len(global_polygons), "{}: len(boxes) != len(global_polygons)".format(i)
+                assert len(labels) == len(global_polygons), "{}: len(labels) != len(global_polygons)".format(i)
+                assert labels.shape[0] == global_polygons.shape[0], "{}: labels.shape[0] != global_polygons.shape[0]".format(i)
 
                 out.append((img_id, self._aspect_ratios[i]))
             except AssertionError as e:

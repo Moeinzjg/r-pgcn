@@ -21,7 +21,7 @@ class CocoEvaluator:
         
         self.has_results = False
             
-    def accumulate(self, coco_results): # input all predictions
+    def accumulate(self, coco_results):  # input all predictions
         if len(coco_results) == 0:
             return
         
@@ -29,14 +29,13 @@ class CocoEvaluator:
         for iou_type in self.iou_types:
             coco_eval = self.coco_eval[iou_type]
             coco_eval.cocoDt = self.coco_gt.loadRes(coco_results)  # use the method loadRes
-            coco_eval.params.imgIds = image_ids # ids of images to be evaluated
+            coco_eval.params.imgIds = image_ids  # ids of images to be evaluated
             coco_eval.evaluate()  # 15.4s
             coco_eval._paramsEval = copy.deepcopy(coco_eval.params)
 
             coco_eval.accumulate()  # 3s
             
         self.has_results = True
-        return coco_eval.eval
     
     def summarize(self):
         if self.has_results:
