@@ -4,7 +4,7 @@ import pytorch_mask_rcnn as pmr
 
 use_cuda = True
 dataset = "coco"
-ckpt_path = "maskrcnn_coco-25.pth"  #  !!: set it also for rpolygcn results 
+ckpt_path = "maskrcnn_coco-15.pth"
 data_dir = "../Vegas_coco_random_splits/"
 
 device = torch.device("cuda" if torch.cuda.is_available() and use_cuda else "cpu")
@@ -49,6 +49,7 @@ num_images = 6
 
 for i, (image, target) in enumerate(d):
     image = image.to(device)[0]
+    target.pop('global_polygons')
     target = {k: v.to(device) for k, v in target.items()}
 
     with torch.no_grad():
