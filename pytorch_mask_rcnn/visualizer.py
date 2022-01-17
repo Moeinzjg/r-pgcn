@@ -331,8 +331,8 @@ class Visualizer:
 
         for i in range(num_instances):
             color = assigned_colors[i]
-            if boxes is not None:
-                self.draw_box(boxes[i], edge_color=color)
+            # if boxes is not None:
+            #     self.draw_box(boxes[i], edge_color=color)
 
             if masks is not None:
                 plygons = masks[i].polygons
@@ -342,7 +342,7 @@ class Visualizer:
 
             if polygons is not None:
                 polygon = polygons[i].polygon
-                self.draw_polygon(polygon, [1.0, 1.0, 1.0], edge_color=[1.0, 0.0, 0.0], alpha=alpha, mask=False)
+                self.draw_polygon(polygon, [1.0, 1.0, 1.0], edge_color=[0.0, 1.0, 0.0], alpha=alpha, mask=False)
 
             # if edges is not None:
             #     self.all_edges[edges[i].edge == 1] = 1
@@ -389,13 +389,13 @@ class Visualizer:
                     * 0.5
                     * self._default_font_size
                 )
-                self.draw_text(
-                    labels[i],
-                    text_pos,
-                    color=lighter_color,
-                    horizontal_alignment=horiz_align,
-                    font_size=font_size,
-                )
+                # self.draw_text(
+                #     labels[i],
+                #     text_pos,
+                #     color=lighter_color,
+                #     horizontal_alignment=horiz_align,
+                #     font_size=font_size,
+                # )
 
         return self.output
 
@@ -459,13 +459,15 @@ class Visualizer:
             fill=fill,
             facecolor=mplc.to_rgb(color) + (alpha,),
             edgecolor=edge_color,
-            linewidth=max(self._default_font_size // 15 * self.output.scale, 1),
+            linewidth=max(self._default_font_size // 15 * self.output.scale, 1)
         )
         if mask:
             self.output.ax.add_patch(polygon)
             return self.output
         else:
             self.output_poly.ax.add_patch(polygon)
+            vert = polygon.get_xy()
+            self.output_poly.ax.plot(vert[:, 0], vert[:, 1], '.', color=[1.0, 0.0, 0.0], alpha=alpha)
             return self.output_poly
 
     def draw_polypoint(self, segment, color, alpha=0.5):
