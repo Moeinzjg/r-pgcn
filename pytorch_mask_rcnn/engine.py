@@ -71,7 +71,7 @@ def evaluate(model, data_loader, device, args, generate=True, poly=False):
     dataset = data_loader
     iou_types = ["bbox", "segm"]
     coco_evaluator = CocoEvaluator(dataset.coco, iou_types)
-    coco_evaluator_rpolygcn = CocoEvaluator(dataset.coco, iou_types[1])
+    coco_evaluator_rpolygcn = CocoEvaluator(dataset.coco, iou_types)
 
     results = torch.load(args.results, map_location="cpu")
     rpolygcn_results = torch.load(args.rpolygcn_results, map_location="cpu")

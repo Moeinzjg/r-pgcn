@@ -94,7 +94,7 @@ def prepare_for_coco_polygon(predictions):
         boxes = prediction["boxes"]
         scores = prediction["scores"]
         labels = prediction["labels"]
-        masks = prediction["polygons"]
+        masks = prediction["masks_from_polygons"]
         x1, y1, x2, y2 = boxes.unbind(1)
         boxes = torch.stack((x1, y1, x2 - x1, y2 - y1), dim=1)
         boxes = boxes.tolist()
