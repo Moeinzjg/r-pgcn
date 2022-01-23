@@ -136,15 +136,15 @@ class MaskRCNN(nn.Module):
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, layers_mask, dim_reduced_mask, num_classes)
         # self.head.edge_predictor = EdgeRCNNPredictor(out_channels, num_classes)
         # self.head.vertex_predictor = VertexRCNNPredictor(out_channels, num_classes)
-        self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=28)
         self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256, internal=2)
         self.head.poly_augmentor = PolyAugmentor(out_channels)
+        self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=28)
 
         # ------------ Transformer --------------------------
         self.transformer = Transformer(
             min_size=800, max_size=1333,
-            image_mean=[0.485, 0.456, 0.406],   # TODO: check mean and std
-            image_std=[0.229, 0.224, 0.225])
+            image_mean=[0.339, 0.327, 0.329],  # ImageNet: image_mean=[0.485, 0.456, 0.406],
+            image_std=[0.255, 0.246, 0.242])   # ImageNet: image_std=[0.229, 0.224, 0.225]
 
         # TODO: transformer changes mask too! so, include edge&vertex too.
 
@@ -362,7 +362,7 @@ def maskrcnn_resnet50(pretrained, num_classes, pretrained_backbone=True):
     """
     # TODO: enable pretrained maskrcnn for r-polygcn
     if pretrained:
-        backbone_pretrained = False
+        pretrained_backbone = False
 
     backbone = ResBackbone('resnet50', pretrained_backbone)
     model = MaskRCNN(backbone, num_classes)
