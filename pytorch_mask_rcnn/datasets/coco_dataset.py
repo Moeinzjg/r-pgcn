@@ -95,7 +95,7 @@ class COCODataset(GeneralizedDataset):
         vertex_mask[poly_temp[:, 0], poly_temp[:, 1]] = 1.0
         return vertex_mask
 
-    def make_polygon(self, poly, shape, bbox):  # TODO: check if x and y are right not y, x
+    def make_polygon(self, poly, shape, bbox):
         EPS = 1e-7
         poly_temp = poly.copy()
         poly_temp = np.array(poly_temp).reshape(-1, 2)  # [x, y]
@@ -103,7 +103,7 @@ class COCODataset(GeneralizedDataset):
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
         poly_temp = np.floor(poly_temp).astype(np.int32)
 
-        polygon = self.uniform_sample(poly_temp, self.num_points)  # TODO: check the performance of uniform_sample
+        polygon = self.uniform_sample(poly_temp, self.num_points)
         arr_polygon = np.ones((self.num_points, 2), np.float32) * 0.
         arr_polygon[:, :] = polygon
 
@@ -136,7 +136,7 @@ class COCODataset(GeneralizedDataset):
         # ys = (ys - (y_min - top_margin)) / float(patch_w)
 
         xs = (xs - x_min) / float(w)
-        ys = (ys - y_min) / float(h)  # TODO: double-check x, y, w, h
+        ys = (ys - y_min) / float(h)
 
         xs = np.clip(xs, 0 + EPS, 1 - EPS)  # between epsilon and 1-epsilon
         ys = np.clip(ys, 0 + EPS, 1 - EPS)
