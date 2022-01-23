@@ -241,7 +241,7 @@ class Visualizer:
         labels = _create_text_labels(classes.tolist(), scores, class_names)
 
         # target polygons
-        gt_polygons = targets["global_polygons"] if "polygons" in targets else None
+        gt_polygons = targets["global_polygons"] if "global_polygons" in targets else None
         gt_polygons = list(map(torch.squeeze, gt_polygons))
 
         if self._instance_mode == ColorMode.SEGMENTATION and thing_colors is not None:
