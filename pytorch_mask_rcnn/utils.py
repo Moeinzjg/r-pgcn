@@ -186,8 +186,8 @@ def mask_from_poly(pred, width, height):
         for idx, p in enumerate(pred):
             masks[idx] = draw_poly12(masks[idx], p)
     else:
+        masks = np.zeros((pred.shape[0], height, width), dtype=np.uint8)
         for idx in range(pred.shape[0]):
-            masks = np.zeros((pred.shape[0], height, width), dtype=np.uint8)
             masks[idx] = draw_poly12(masks[idx], pred[idx, :, :])
 
     return masks
