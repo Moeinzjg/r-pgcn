@@ -17,13 +17,17 @@ __all__ = ["ColorMode", "VisImage", "Visualizer", "show"]
 _SMALL_OBJECT_AREA_THRESH = 1000
 
 
-def show(images, targets=None, classes=None, save_path=None):
+def show(images, preds=None, targets=None, classes=None, save_path=None):
     """
-    Show the image, with or without the target.
+    Show the image, with or without the pred/target.
 
     args:
         images (tensor[B, 3, H, W] or List[tensor[3, H, W]]): RGB channels, value range: [0.0, 1.0]
-        targets (Dict[str: tensor]): current support "boxes", "labels", "scores", "masks"
+        preds (Dict[str: tensor]): current support "boxes", "labels", "scores", "masks", "polygons"
+           all tensors should be of the same length, assuming N
+           boxes: shape=[N, 4], format=(xmin, ymin, xmax, ymax)
+           masks: shape=[N, H, W], dtype can be one of [torch.bool, torch.uint8, torch.float]
+        targets (Dict[str: tensor]): current support "boxes", "labels", "scores", "masks", "polygons"
            all tensors should be of the same length, assuming N
            boxes: shape=[N, 4], format=(xmin, ymin, xmax, ymax)
            masks: shape=[N, H, W], dtype can be one of [torch.bool, torch.uint8, torch.float]
@@ -32,6 +36,8 @@ def show(images, targets=None, classes=None, save_path=None):
     """
     if isinstance(images, torch.Tensor) and images.dim() == 3:
         images = [images]
+    if isinstance(preds, dict):
+        preds = [preds]
     if isinstance(targets, dict):
         targets = [targets]
     if isinstance(save_path, str):
@@ -46,11 +52,14 @@ def show(images, targets=None, classes=None, save_path=None):
 
     for i in range(len(images)):
         fig = Visualizer(images[i])
-        fig_poly = Visualizer(images[i])
+        # fig_poly = Visualizer(images[i])
 
-        if targets is not None:
-            fig.draw_instance_predictions(targets[i], classes)
-            fig_poly.draw_instance_predictions(targets[i], classes)
+        if preds is not None:
+            if targets is not None:
+                fig.draw_instance_predictions(preds[i], targets[i], classes)
+            else:
+                fig.draw_instance_predictions(preds[i], classes)
+            # fig_poly.draw_instance_predictions(preds[i], classes)
         fig.show()
         if save_path is not None:
             fig.save_plot(save_path[i])
@@ -208,6 +217,7 @@ class Visualizer:
         self.img = np.asarray(img_rgb).clip(0, 255).astype(np.uint8)
         self.output = VisImage(self.img, scale=scale)
         self.output_poly = VisImage(self.img, scale=scale)
+        self.output_gtpoly = VisImage(self.img, scale=scale)
 
         # too small texts are useless, therefore clamp to 9
         self._default_font_size = max(
@@ -218,7 +228,7 @@ class Visualizer:
     def __call__(self, *args, **kwargs):
         return self.draw_instance_predictions(*args, **kwargs)
 
-    def draw_instance_predictions(self, predictions, class_names=None, thing_colors=None):
+    def draw_instance_predictions(self, predictions, targets=None, class_names=None, thing_colors=None):
         boxes = predictions["boxes"] if "boxes" in predictions else None
         scores = predictions["scores"] if "scores" in predictions else None
         classes = predictions["labels"] if "labels" in predictions else None
@@ -229,6 +239,10 @@ class Visualizer:
         # vertices = predictions["vertices"] if "vertices" in predictions else None
 
         labels = _create_text_labels(classes.tolist(), scores, class_names)
+
+        # target polygons
+        gt_polygons = targets["global_polygons"] if "polygons" in targets else None
+        gt_polygons = list(map(torch.squeeze, gt_polygons))
 
         if self._instance_mode == ColorMode.SEGMENTATION and thing_colors is not None:
             colors = [
@@ -243,16 +257,18 @@ class Visualizer:
             masks=masks,
             boxes=boxes,
             polygons=polygons,
+            gt_polygons=gt_polygons,
             # edges=edges,
             # vertices=vertices,
             labels=labels,
             assigned_colors=colors,
             alpha=alpha,
         )
-        return self.output, self.output_poly
+        return self.output, self.output_poly, self.output_gtpoly
 
-    def overlay_instances(self, boxes=None, labels=None, masks=None, polygons=None,
-                          edges=None, vertices=None, assigned_colors=None, alpha=0.5):
+    def overlay_instances(self, boxes=None, labels=None, masks=None,
+                          polygons=None, gt_polygons=None, edges=None,
+                          vertices=None, assigned_colors=None, alpha=0.5):
         num_instances = 0
         if boxes is not None:
             boxes = np.asarray(boxes.cpu())
@@ -275,6 +291,10 @@ class Visualizer:
                 assert len(polygons) == num_instances
             else:
                 num_instances = len(polygons)
+
+        if gt_polygons is not None:
+            gt_polygons = [GenericPolygon(np.array(x.cpu())) for x in gt_polygons]
+            num_instances_gt = len(gt_polygons)
 
         # if edges is not None:
         #     if edges.is_floating_point():
@@ -302,8 +322,8 @@ class Visualizer:
         if assigned_colors is None:
             assigned_colors = [random_color(rgb=True, maximum=1) for _ in range(num_instances)]
 
-        if num_instances == 0:
-            return self.output, self.output_poly
+        if num_instances == 0 and num_instances_gt == 0:
+            return self.output, self.output_poly, self.output_gtpoly
 
         # Display in largest to smallest order to reduce occlusion.
         areas = None
@@ -396,8 +416,13 @@ class Visualizer:
                 #     horizontal_alignment=horiz_align,
                 #     font_size=font_size,
                 # )
+        # draw gt polygons
+        for i in range(num_instances_gt):
+            if gt_polygons is not None:
+                gt_polygon = gt_polygons[i].polygon
+                self.draw_polygon(gt_polygon, [1.0, 1.0, 1.0], edge_color=[0.0, 1.0, 0.0], alpha=alpha, mask=False, gt=True)
 
-        return self.output
+        return self.output, self.output_poly, self.output_gtpoly
 
     def draw_text(self, text, position, font_size=None, 
                   color="g", horizontal_alignment="center"):
@@ -445,7 +470,7 @@ class Visualizer:
         )
         return self.output
 
-    def draw_polygon(self, segment, color, edge_color=None, alpha=0.5, fill=True, mask=True):
+    def draw_polygon(self, segment, color, edge_color=None, alpha=0.5, fill=True, mask=True, gt=False):
         if edge_color is None:
             # make edge color darker than the polygon color
             if alpha > 0.8:
@@ -464,6 +489,11 @@ class Visualizer:
         if mask:
             self.output.ax.add_patch(polygon)
             return self.output
+        elif gt:
+            self.output_gtpoly.ax.add_patch(polygon)
+            vert = polygon.get_xy()
+            self.output_gtpoly.ax.plot(vert[:, 0], vert[:, 1], '.', color=[1.0, 0.0, 0.0], alpha=alpha)
+            return self.output_gtpoly
         else:
             self.output_poly.ax.add_patch(polygon)
             vert = polygon.get_xy()
@@ -481,17 +511,24 @@ class Visualizer:
         self.fig = plt.figure(figsize=(W / 72, H / 72))
 
         # plot mask prediction
-        ax = self.fig.add_subplot(121)
+        ax = self.fig.add_subplot(131)
         img_out = self.output.get_image()
         ax.imshow(img_out)
         ax.set_title("mask prediction")
         ax.axis("off")
 
         # plot polygon prediction
-        ax = self.fig.add_subplot(122)
+        ax = self.fig.add_subplot(132)
         img_out = self.output_poly.get_image()
         ax.imshow(img_out)
         ax.set_title("polygon prediction")
+        ax.axis("off")
+
+        # plot polygon gt
+        ax = self.fig.add_subplot(133)
+        img_out = self.output_gtpoly.get_image()
+        ax.imshow(img_out)
+        ax.set_title("polygon gt")
         ax.axis("off")
 
         # plot edge prediction

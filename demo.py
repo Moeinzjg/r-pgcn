@@ -16,12 +16,12 @@ def main(args):
         pmr.get_gpu_prop(show=True)
     print("\ndevice: {}".format(device))
 
-    ds = pmr.datasets(dataset, data_dir, "test", train=False)
+    ds = pmr.datasets(dataset, data_dir, "test", train=True)
     d = torch.utils.data.DataLoader(ds, shuffle=True)
 
     model = pmr.maskrcnn_resnet50(False, max(ds.classes) + 1).to(device)
     model.eval()
-    model.head.score_thresh = 0.3
+    model.head.score_thresh = 0.5
 
     if ckpt_path:
         checkpoint = torch.load(ckpt_path, map_location=device)
@@ -36,12 +36,15 @@ def main(args):
 
     for i, (image, target) in enumerate(d):
         image = image.to(device)[0]
-        # target.pop('global_polygons')
+
+        global_poly = target['global_polygons']
+        target.pop('global_polygons')
         target = {k: v.to(device) for k, v in target.items()}
+        target['global_polygons'] = global_poly
 
         with torch.no_grad():
             result = model(image)
-        pmr.show(image, result, ds.classes, "./images/output{}.jpg".format(i))
+        pmr.show(image, result, target, ds.classes, "./images/output{}.jpg".format(i))
 
         if i >= num_images - 1:
             break
