@@ -10,9 +10,9 @@ except:
     pass
 
 
-def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
-    for p in optimizer.param_groups:
-        p["lr"] = args.lr_epoch
+def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, args, writer):
+    # for p in optimizer.param_groups:
+    #     p["lr"] = args.lr_epoch
 
     iters = len(data_loader) if args.iters < 0 else args.iters
 
@@ -35,6 +35,23 @@ def train_one_epoch(model, optimizer, data_loader, device, epoch, args, writer):
         S = time.time()
 
         losses = model(image, target)
+
+        if trainable == 'FA':
+            losses['roi_polygon_loss'] = torch.tensor(0, requires_grad=False)
+
+        elif trainable == 'GCN':
+            losses['roi_classifier_loss'] = torch.tensor(0, requires_grad=False)
+            losses['roi_box_loss'] = torch.tensor(0, requires_grad=False)
+            losses['roi_mask_loss'] = torch.tensor(0, requires_grad=False)
+            losses['roi_edge_loss'] = torch.tensor(0, requires_grad=False)
+            losses['roi_vertex_loss'] = torch.tensor(0, requires_grad=False)
+
+            losses['rpn_objectness_loss'] = torch.tensor(0, requires_grad=False)
+            losses['rpn_box_loss'] = torch.tensor(0, requires_grad=False)
+
+
+
+
         total_loss = sum(losses.values())
         m_m.update(time.time() - S)
 
