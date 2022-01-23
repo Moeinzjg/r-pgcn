@@ -49,9 +49,6 @@ def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, arg
             losses['rpn_objectness_loss'] = torch.tensor(0, requires_grad=False)
             losses['rpn_box_loss'] = torch.tensor(0, requires_grad=False)
 
-
-
-
         total_loss = sum(losses.values())
         m_m.update(time.time() - S)
 
