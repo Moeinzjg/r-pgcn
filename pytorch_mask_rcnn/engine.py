@@ -36,15 +36,15 @@ def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, arg
 
         losses = model(image, target)
 
-        if trainable == 'FA':
+        if trainable == 'MASK':
             losses['roi_polygon_loss'] = torch.tensor(0, requires_grad=False)
+            losses['roi_edge_loss'] = torch.tensor(0, requires_grad=False)
+            losses['roi_vertex_loss'] = torch.tensor(0, requires_grad=False)
 
-        elif trainable == 'GCN':
+        elif trainable == 'FAGCN':
             losses['roi_classifier_loss'] = torch.tensor(0, requires_grad=False)
             losses['roi_box_loss'] = torch.tensor(0, requires_grad=False)
             losses['roi_mask_loss'] = torch.tensor(0, requires_grad=False)
-            losses['roi_edge_loss'] = torch.tensor(0, requires_grad=False)
-            losses['roi_vertex_loss'] = torch.tensor(0, requires_grad=False)
 
             losses['rpn_objectness_loss'] = torch.tensor(0, requires_grad=False)
             losses['rpn_box_loss'] = torch.tensor(0, requires_grad=False)

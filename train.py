@@ -32,11 +32,11 @@ def main(args):
     num_classes = max(d_train.dataset.classes) + 1  # including background class
     model = pmr.maskrcnn_resnet50(False, num_classes, pretrained_backbone=True).to(device)
 
-    # Step1: Train the network till the end of feature augmentation (FA) module
-    train(model, 20, d_train, d_val, args, device, trainable='FA')
+    # Step1: Train the network till the end of localization (FA) module
+    train(model, 20, d_train, d_val, args, device, trainable='MASK')
 
     # Step2: Only Train poly augmentor and GCN
-    train(model, 30, d_train, d_val, args, device, trainable='GCN')
+    train(model, 30, d_train, d_val, args, device, trainable='FAGCN')
 
     # Step3: Train all togather
     train(model, 35, d_train, d_val, args, device, trainable='All')
@@ -48,20 +48,26 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
 
     args.epochs = epochs
 
-    if trainable == 'FA':
+    if trainable == 'MASK':
         # args.lr = 1e-3
         args.lr_steps = [13, 17]
+        for param in model.head.feature_augmentor.parameters():
+            param.requires_grad = False
+
         for param in model.head.poly_augmentor.parameters():
             param.requires_grad = False
 
         for param in model.head.polygon_predictor.parameters():
             param.requires_grad = False
 
-    elif trainable == 'GCN':
+    elif trainable == 'FAGCN':
         # args.lr = 1e-4
         args.lr_steps = [27]
         for param in model.parameters():
             param.requires_grad = False
+
+        for param in model.head.feature_augmentor.parameters():
+            param.requires_grad = True
 
         for param in model.head.poly_augmentor.parameters():
             param.requires_grad = True
