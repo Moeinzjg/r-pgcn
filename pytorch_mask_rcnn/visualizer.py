@@ -123,33 +123,33 @@ class GenericPolygon:
         self.polygon = polygon
 
 
-# class GenericEdge:
-#     def __init__(self, edge, height, width):
-#         self._edge = None
-#         self.height = height
-#         self.width = width
+class GenericEdge:
+    def __init__(self, edge, height, width):
+        self._edge = None
+        self.height = height
+        self.width = width
 
-#         self.edge = edge.astype("uint8")  # ndarray, shape=(h, w)
+        self.edge = edge.astype("uint8")  # ndarray, shape=(h, w)
 
 
-# class GenericVertex:
-#     def __init__(self, vertex, height, width):
-#         self._vertex = None
-#         self.height = height
-#         self.width = width
+class GenericVertex:
+    def __init__(self, vertex, height, width):
+        self._vertex = None
+        self.height = height
+        self.width = width
 
-#         self.vertex = vertex.astype("uint8")  # ndarray, shape=(h, w)
-#         self.points = self.vertex_mask_to_points(self.vertex)
+        self.vertex = vertex.astype("uint8")  # ndarray, shape=(h, w)
+        self.points = self.vertex_mask_to_points(self.vertex)
 
-    # def vertex_mask_to_points(self, vertex):
-    #     vertex = np.ascontiguousarray(vertex)  # some versions of cv2 does not support incontiguous arr
-    #     ver = np.nonzero(vertex)
-    #     res = np.vstack((ver[1], ver[0]))
+    def vertex_mask_to_points(self, vertex):
+        vertex = np.ascontiguousarray(vertex)  # some versions of cv2 does not support incontiguous arr
+        ver = np.nonzero(vertex)
+        res = np.vstack((ver[1], ver[0]))
         
-    #     if res.shape[1] == 0:  # empty mask
-    #         return [], False
+        if res.shape[1] == 0:  # empty mask
+            return [], False
 
-    #     return res, True
+        return res, True
 
 
 def _create_text_labels(classes, scores, class_names):
@@ -235,8 +235,8 @@ class Visualizer:
         masks = predictions["masks"] if "masks" in predictions else None
         polygons = predictions["polygons"] if "polygons" in predictions else None
 
-        # edges = predictions["edges"] if "edges" in predictions else None
-        # vertices = predictions["vertices"] if "vertices" in predictions else None
+        edges = predictions["edges"] if "edges" in predictions else None
+        vertices = predictions["vertices"] if "vertices" in predictions else None
 
         labels = _create_text_labels(classes.tolist(), scores, class_names)
 
@@ -258,8 +258,8 @@ class Visualizer:
             boxes=boxes,
             polygons=polygons,
             gt_polygons=gt_polygons,
-            # edges=edges,
-            # vertices=vertices,
+            edges=edges,
+            vertices=vertices,
             labels=labels,
             assigned_colors=colors,
             alpha=alpha,
@@ -296,25 +296,25 @@ class Visualizer:
             gt_polygons = [GenericPolygon(np.array(x.cpu())) for x in gt_polygons]
             num_instances_gt = len(gt_polygons)
 
-        # if edges is not None:
-        #     if edges.is_floating_point():
-        #         edges = edges > 0.5
-        #     m = np.asarray(edges.cpu())
-        #     edges = [GenericEdge(x, self.output.height, self.output.width) for x in m]
-        #     if num_instances:
-        #         assert len(edges) == num_instances
-        #     else:
-        #         num_instances = len(edges)
+        if edges is not None:
+            if edges.is_floating_point():
+                edges = edges > 0.5
+            m = np.asarray(edges.cpu())
+            edges = [GenericEdge(x, self.output.height, self.output.width) for x in m]
+            if num_instances:
+                assert len(edges) == num_instances
+            else:
+                num_instances = len(edges)
 
-        # if vertices is not None:
-        #     if vertices.is_floating_point():
-        #         vertices = vertices > 0.5
-        #     m = np.asarray(vertices.cpu())
-        #     vertices = [GenericVertex(x, self.output.height, self.output.width) for x in m]
-        #     if num_instances:
-        #         assert len(vertices) == num_instances
-        #     else:
-        #         num_instances = len(vertices)
+        if vertices is not None:
+            if vertices.is_floating_point():
+                vertices = vertices > 0.5
+            m = np.asarray(vertices.cpu())
+            vertices = [GenericVertex(x, self.output.height, self.output.width) for x in m]
+            if num_instances:
+                assert len(vertices) == num_instances
+            else:
+                num_instances = len(vertices)
 
         if labels is not None:
             assert len(labels) == num_instances
@@ -339,15 +339,15 @@ class Visualizer:
             labels = [labels[k] for k in sorted_idxs] if labels is not None else None
             masks = [masks[idx] for idx in sorted_idxs] if masks is not None else None
             polygons = [polygons[idx] for idx in sorted_idxs] if polygons is not None else None
-            # edges = [edges[idx] for idx in sorted_idxs] if edges is not None else None
-            # vertices = [vertices[idx] for idx in sorted_idxs] if vertices is not None else None
+            edges = [edges[idx] for idx in sorted_idxs] if edges is not None else None
+            vertices = [vertices[idx] for idx in sorted_idxs] if vertices is not None else None
             assigned_colors = [assigned_colors[idx] for idx in sorted_idxs]
 
-        # if edges is not None:
-        #     self.all_edges = edges[0].edge.copy()
+        if edges is not None:
+            self.all_edges = edges[0].edge.copy()
 
-        # if vertices is not None:
-        #     self.all_vertices = vertices[0].vertex.copy()
+        if vertices is not None:
+            self.all_vertices = vertices[0].vertex.copy()
 
         for i in range(num_instances):
             color = assigned_colors[i]
@@ -364,13 +364,13 @@ class Visualizer:
                 polygon = polygons[i].polygon
                 self.draw_polygon(polygon, [1.0, 1.0, 1.0], edge_color=[0.0, 1.0, 0.0], alpha=alpha, mask=False)
 
-            # if edges is not None:
-            #     self.all_edges[edges[i].edge == 1] = 1
+            if edges is not None:
+                self.all_edges[edges[i].edge == 1] = 1
 
-            # if vertices is not None:
-            #     points = vertices[i].points
-            #     if points[1]:
-            #         self.draw_polypoint(points[0].transpose(), color, alpha=alpha)
+            if vertices is not None:
+                points = vertices[i].points
+                if points[1]:
+                    self.draw_polypoint(points[0].transpose(), color, alpha=alpha)
 
             if labels is not None:
                 # first get a box
@@ -511,43 +511,42 @@ class Visualizer:
         self.fig = plt.figure(figsize=(W / 72, H / 72))
 
         # plot mask prediction
-        ax = self.fig.add_subplot(131)
+        ax = self.fig.add_subplot(231)
         img_out = self.output.get_image()
         ax.imshow(img_out)
         ax.set_title("mask prediction")
         ax.axis("off")
 
         # plot polygon prediction
-        ax = self.fig.add_subplot(132)
+        ax = self.fig.add_subplot(232)
         img_out = self.output_poly.get_image()
         ax.imshow(img_out)
         ax.set_title("polygon prediction")
         ax.axis("off")
 
         # plot polygon gt
-        ax = self.fig.add_subplot(133)
+        ax = self.fig.add_subplot(233)
         img_out = self.output_gtpoly.get_image()
         ax.imshow(img_out)
         ax.set_title("polygon gt")
         ax.axis("off")
 
         # plot edge prediction
-        # if False:
-        #     ax2 = self.fig.add_subplot(132)
-        #     img_out2 = self.img.copy()
-        #     img_out2[self.all_edges == 1] = [255, 0, 0]  # add edges
-        #     ax2.imshow(img_out2.astype("uint8"))
-        #     ax2.set_title("edge prediction")
-        #     ax2.axis("off")
+        ax = self.fig.add_subplot(234)
+        img_out = self.img.copy()
+        img_out[self.all_edges == 1] = [255, 0, 0]  # add edges
+        ax.imshow(img_out.astype("uint8"))
+        ax.set_title("edge prediction")
+        ax.axis("off")
 
-        # # plot vertex prediction
-        # if False:
-        #     ax3 = self.fig.add_subplot(133)
-        #     img_out3 = self.img.copy()
-        #     img_out3[self.all_vertices == 1] = [255, 0, 0]  # add vertices
-        #     ax3.imshow(img_out3.astype("uint8"))
-        #     ax3.set_title("vertex prediction")
-        #     ax3.axis("off")
+        # plot vertex prediction
+
+        ax = self.fig.add_subplot(236)
+        img_out = self.img.copy()
+        img_out[self.all_vertices == 1] = [255, 0, 0]  # add vertices
+        ax.imshow(img_out.astype("uint8"))
+        ax.set_title("vertex prediction")
+        ax.axis("off")
 
         plt.show()
 
