@@ -319,7 +319,7 @@ pr.diff
 *.pth
 
 # Folders
-images
+result_images
 maskrcnn_results
 
 # Special Files
