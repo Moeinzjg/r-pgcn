@@ -41,29 +41,33 @@ def show(images, preds=None, targets=None, classes=None, save_path=None):
     if isinstance(targets, dict):
         targets = [targets]
     if isinstance(save_path, str):
+        ext = '.jpg'
         if len(images) == 1:
-            prefix, ext = os.path.splitext(save_path)
-            save_path_poly = ["{}_poly{}".format(prefix, ext)]
+
+            if targets is not None:
+                save_path_gt = [save_path + '_gt' + ext]
+            save_path = save_path + ext
             save_path = [save_path]
+
         else:
-            prefix, ext = os.path.splitext(save_path)
-            save_path = ["{}_{}{}".format(prefix, i + 1, ext) for i in range(len(images))]
-            save_path_poly = ["{}_{}_poly{}".format(prefix, i + 1, ext) for i in range(len(images))]
+            save_path = ["{}_{}{}".format(save_path, i + 1, ext) for i in range(len(images))]
+            if targets is not None:
+                save_path_gt = ["{}_{}_gt_{}".format(save_path, i + 1, ext) for i in range(len(images))]
 
     for i in range(len(images)):
         fig = Visualizer(images[i])
-        # fig_poly = Visualizer(images[i])
 
         if preds is not None:
             if targets is not None:
                 fig.draw_instance_predictions(preds[i], targets[i], classes)
             else:
                 fig.draw_instance_predictions(preds[i], classes)
-            # fig_poly.draw_instance_predictions(preds[i], classes)
         fig.show()
         if save_path is not None:
-            fig.save_plot(save_path[i])
-            # fig_poly.save_plot(save_path_poly[i])
+            if targets is None:
+                fig.save_plot(save_path[i])
+            else:
+                fig.save_plot(save_path[i], save_path_gt[i])
 
 
 @unique
@@ -217,7 +221,10 @@ class Visualizer:
         self.img = np.asarray(img_rgb).clip(0, 255).astype(np.uint8)
         self.output = VisImage(self.img, scale=scale)
         self.output_poly = VisImage(self.img, scale=scale)
+        self.output_vertex = VisImage(self.img, scale=scale)
+        self.output_gtmask = VisImage(self.img, scale=scale)
         self.output_gtpoly = VisImage(self.img, scale=scale)
+        self.output_gtvertex = VisImage(self.img, scale=scale)
 
         # too small texts are useless, therefore clamp to 9
         self._default_font_size = max(
@@ -229,20 +236,22 @@ class Visualizer:
         return self.draw_instance_predictions(*args, **kwargs)
 
     def draw_instance_predictions(self, predictions, targets=None, class_names=None, thing_colors=None):
+        self.target = targets is not None
         boxes = predictions["boxes"] if "boxes" in predictions else None
         scores = predictions["scores"] if "scores" in predictions else None
         classes = predictions["labels"] if "labels" in predictions else None
         masks = predictions["masks"] if "masks" in predictions else None
         polygons = predictions["polygons"] if "polygons" in predictions else None
-
         edges = predictions["edges"] if "edges" in predictions else None
         vertices = predictions["vertices"] if "vertices" in predictions else None
-
         labels = _create_text_labels(classes.tolist(), scores, class_names)
 
-        # target polygons
+        # targets
+        gt_masks = targets["masks"].squeeze(0) if "masks" in targets else None
         gt_polygons = targets["global_polygons"] if "global_polygons" in targets else None
         gt_polygons = list(map(torch.squeeze, gt_polygons))
+        gt_vertices = targets["vertices"].squeeze(0) if "vertices" in targets else None
+        gt_edges = targets["edges"].squeeze(0) if "edges" in targets else None
 
         if self._instance_mode == ColorMode.SEGMENTATION and thing_colors is not None:
             colors = [
@@ -257,19 +266,24 @@ class Visualizer:
             masks=masks,
             boxes=boxes,
             polygons=polygons,
-            gt_polygons=gt_polygons,
             edges=edges,
             vertices=vertices,
             labels=labels,
+            gt_masks=gt_masks,
+            gt_polygons=gt_polygons,
+            gt_edges=gt_edges,
+            gt_vertices=gt_vertices,
             assigned_colors=colors,
             alpha=alpha,
         )
-        return self.output, self.output_poly, self.output_gtpoly
+        return self.output, self.output_poly, self.output_vertex, self.output_gtmask, self.output_gtpoly, self.output_gtvertex
 
     def overlay_instances(self, boxes=None, labels=None, masks=None,
-                          polygons=None, gt_polygons=None, edges=None,
-                          vertices=None, assigned_colors=None, alpha=0.5):
+                          polygons=None, edges=None, vertices=None,
+                          gt_masks=None, gt_polygons=None, gt_edges=None,
+                          gt_vertices=None, assigned_colors=None, alpha=0.5):
         num_instances = 0
+        num_instances_gt = 0
         if boxes is not None:
             boxes = np.asarray(boxes.cpu())
             num_instances = len(boxes)
@@ -292,10 +306,6 @@ class Visualizer:
             else:
                 num_instances = len(polygons)
 
-        if gt_polygons is not None:
-            gt_polygons = [GenericPolygon(np.array(x.cpu())) for x in gt_polygons]
-            num_instances_gt = len(gt_polygons)
-
         if edges is not None:
             if edges.is_floating_point():
                 edges = edges > 0.5
@@ -315,15 +325,52 @@ class Visualizer:
                 assert len(vertices) == num_instances
             else:
                 num_instances = len(vertices)
-
+        
         if labels is not None:
             assert len(labels) == num_instances
+
+        if gt_masks is not None:
+            if gt_masks.is_floating_point():
+                gt_masks = gt_masks > 0.5
+            m = np.asarray(gt_masks.cpu())
+            gt_masks = [GenericMask(x, self.output.height, self.output.width) for x in m]
+            num_instances_gt = len(gt_masks)
+
+        if gt_polygons is not None:
+            gt_polygons = [GenericPolygon(np.array(x.cpu())) for x in gt_polygons]
+            if num_instances_gt:
+                try:
+                    assert len(gt_polygons) == num_instances_gt
+                except AssertionError:
+                    print("#polygons: {}, #masks: {}".format(len(gt_polygons), num_instances_gt))
+            else:
+                num_instances_gt = len(gt_polygons)
+
+        if gt_edges is not None:
+            if gt_edges.is_floating_point():
+                gt_edges = gt_edges > 0.5
+            m = np.asarray(gt_edges.cpu())
+            gt_edges = [GenericEdge(x, self.output.height, self.output.width) for x in m]
+            if num_instances_gt:
+                assert len(gt_edges) == num_instances_gt
+            else:
+                num_instances_gt = len(gt_edges)
+
+        if gt_vertices is not None:
+            if gt_vertices.is_floating_point():
+                gt_vertices = gt_vertices > 0.5
+            m = np.asarray(gt_vertices.cpu())
+            gt_vertices = [GenericVertex(x, self.output.height, self.output.width) for x in m]
+            if num_instances_gt:
+                assert len(gt_vertices) == num_instances_gt
+            else:
+                num_instances_gt = len(gt_vertices)
 
         if assigned_colors is None:
             assigned_colors = [random_color(rgb=True, maximum=1) for _ in range(num_instances)]
 
         if num_instances == 0 and num_instances_gt == 0:
-            return self.output, self.output_poly, self.output_gtpoly
+            return self.output, self.output_poly, self.output_vertex, self.output_gtmask, self.output_gtpoly, self.output_gtvertex
 
         # Display in largest to smallest order to reduce occlusion.
         areas = None
@@ -346,8 +393,15 @@ class Visualizer:
         if edges is not None:
             self.all_edges = edges[0].edge.copy()
 
-        if vertices is not None:
-            self.all_vertices = vertices[0].vertex.copy()
+        # if vertices is not None:
+        #     self.all_vertices = vertices[0].vertex.copy()
+
+        if gt_edges is not None:
+            self.all_gt_edges = gt_edges[0].edge.copy()
+
+        # if gt_vertices is not None:
+            # self.all_gt_vertices = gt_vertices[0].vertex.copy()
+
 
         for i in range(num_instances):
             color = assigned_colors[i]
@@ -358,11 +412,11 @@ class Visualizer:
                 plygons = masks[i].polygons
                 if plygons[1]:
                     for segment in plygons[0]:
-                        self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha, mask=True)
+                        self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha, mask=True, gt=False)
 
             if polygons is not None:
                 polygon = polygons[i].polygon
-                self.draw_polygon(polygon, [1.0, 1.0, 1.0], edge_color=[0.0, 1.0, 0.0], alpha=alpha, mask=False)
+                self.draw_polygon(polygon, [1.0, 1.0, 1.0], edge_color=[0.0, 1.0, 0.0], alpha=alpha, mask=False, gt=False)
 
             if edges is not None:
                 self.all_edges[edges[i].edge == 1] = 1
@@ -370,7 +424,7 @@ class Visualizer:
             if vertices is not None:
                 points = vertices[i].points
                 if points[1]:
-                    self.draw_polypoint(points[0].transpose(), color, alpha=alpha)
+                    self.draw_polypoint(points[0].transpose(), [1.0, 0.0, 0.0], alpha=alpha, gt=False)
 
             if labels is not None:
                 # first get a box
@@ -416,13 +470,28 @@ class Visualizer:
                 #     horizontal_alignment=horiz_align,
                 #     font_size=font_size,
                 # )
-        # draw gt polygons
+        # draw GT
         for i in range(num_instances_gt):
+            if gt_masks is not None:
+                plygons = gt_masks[i].polygons
+                if plygons[1]:
+                    for segment in plygons[0]:
+                        self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha, mask=True, gt=True)
+
             if gt_polygons is not None:
                 gt_polygon = gt_polygons[i].polygon
                 self.draw_polygon(gt_polygon, [1.0, 1.0, 1.0], edge_color=[0.0, 1.0, 0.0], alpha=alpha, mask=False, gt=True)
+            
+            if gt_edges is not None:
+                self.all_gt_edges[gt_edges[i].edge == 1] = 1
 
-        return self.output, self.output_poly, self.output_gtpoly
+            if gt_vertices is not None:
+                points = gt_vertices[i].points
+                if points[1]:
+                    self.draw_polypoint(points[0].transpose(), [0.0, 1.0, 0.0], alpha=alpha, gt=True)
+                # self.all_gt_vertices[gt_vertices[i].vertex == 1] = 1
+
+        return self.output, self.output_poly, self.output_vertex, self.output_gtmask, self.output_gtpoly, self.output_gtvertex
 
     def draw_text(self, text, position, font_size=None, 
                   color="g", horizontal_alignment="center"):
@@ -487,8 +556,12 @@ class Visualizer:
             linewidth=max(self._default_font_size // 15 * self.output.scale, 1)
         )
         if mask:
-            self.output.ax.add_patch(polygon)
-            return self.output
+            if gt:
+                self.output_gtmask.ax.add_patch(polygon)
+                return self.output_gtmask
+            else:
+                self.output.ax.add_patch(polygon)
+                return self.output
         elif gt:
             self.output_gtpoly.ax.add_patch(polygon)
             vert = polygon.get_xy()
@@ -500,58 +573,90 @@ class Visualizer:
             self.output_poly.ax.plot(vert[:, 0], vert[:, 1], '.', color=[1.0, 0.0, 0.0], alpha=alpha)
             return self.output_poly
 
-    def draw_polypoint(self, segment, color, alpha=0.5):
+    def draw_polypoint(self, segment, color, alpha=0.5, gt=False):
 
-        self.output.ax.plot(segment[:, 0], segment[:, 1], '*', color=color, alpha=alpha)
-
-        return self.output
+        if gt:
+            self.output_gtvertex.ax.plot(segment[:, 0], segment[:, 1], '*', color=color, alpha=alpha)
+            return self.output_gtvertex
+        else:
+            self.output_vertex.ax.plot(segment[:, 0], segment[:, 1], '*', color=color, alpha=alpha)
+            return self.output_vertex
 
     def show(self):
         H, W = self.img.shape[:2]
-        self.fig = plt.figure(figsize=(W / 72, H / 72))
+        self.fig_pred = plt.figure(figsize=(W / 72, H / 72))
 
+        # Plot predictions
         # plot mask prediction
-        ax = self.fig.add_subplot(231)
+        ax = self.fig_pred.add_subplot(221)
         img_out = self.output.get_image()
         ax.imshow(img_out)
         ax.set_title("mask prediction")
         ax.axis("off")
 
         # plot polygon prediction
-        ax = self.fig.add_subplot(232)
+        ax = self.fig_pred.add_subplot(222)
         img_out = self.output_poly.get_image()
         ax.imshow(img_out)
         ax.set_title("polygon prediction")
         ax.axis("off")
 
-        # plot polygon gt
-        ax = self.fig.add_subplot(233)
-        img_out = self.output_gtpoly.get_image()
-        ax.imshow(img_out)
-        ax.set_title("polygon gt")
-        ax.axis("off")
-
         # plot edge prediction
-        ax = self.fig.add_subplot(234)
+        ax = self.fig_pred.add_subplot(223)
         img_out = self.img.copy()
-        img_out[self.all_edges == 1] = [255, 0, 0]  # add edges
+        img_out[self.all_edges == 1] = [0, 255, 0]  # add edges
         ax.imshow(img_out.astype("uint8"))
         ax.set_title("edge prediction")
         ax.axis("off")
 
         # plot vertex prediction
-
-        ax = self.fig.add_subplot(236)
-        img_out = self.img.copy()
-        img_out[self.all_vertices == 1] = [255, 0, 0]  # add vertices
+        ax = self.fig_pred.add_subplot(224)
+        img_out = self.output_vertex.get_image()
+        # img_out[self.all_vertices == 1] = [255, 0, 0]  # add vertices
         ax.imshow(img_out.astype("uint8"))
         ax.set_title("vertex prediction")
+        ax.axis("off")
+        plt.show()
+
+        # plot GT
+        self.fig_gt = plt.figure(figsize=(W / 72, H / 72))
+        # plot mask gt
+        ax = self.fig_gt.add_subplot(221)
+        img_out = self.output_gtmask.get_image()
+        ax.imshow(img_out)
+        ax.set_title("mask gt")
+        ax.axis("off")
+
+        # plot polygon gt
+        ax = self.fig_gt.add_subplot(222)
+        img_out = self.output_gtpoly.get_image()
+        ax.imshow(img_out)
+        ax.set_title("polygon gt")
+        ax.axis("off")
+
+        # plot edge gt
+        ax = self.fig_gt.add_subplot(223)
+        img_out = self.img.copy()
+        img_out[self.all_gt_edges == 1] = [0, 255, 0]  # add edges
+        ax.imshow(img_out.astype("uint8"))
+        ax.set_title("edge gt")
+        ax.axis("off")
+
+        # plot vertex gt
+        ax = self.fig_gt.add_subplot(224)
+        img_out = self.output_gtvertex.get_image()
+        # img_out[self.all_gt_vertices == 1] = [255, 0, 0]  # add vertices
+        plt.imshow(img_out.astype("uint8"))
+        ax.set_title("vertex gt")
         ax.axis("off")
 
         plt.show()
 
-    def save_plot(self, file_path):
-        self.fig.savefig(file_path, bbox_inches='tight')
+    def save_plot(self, file_path, file_path_gt=None):
+        self.fig_pred.savefig(file_path, bbox_inches='tight')
+
+        if file_path_gt is not None:
+            self.fig_gt.savefig(file_path_gt, bbox_inches='tight')
 
     def _jitter(self, color):
         color = mplc.to_rgb(color)
