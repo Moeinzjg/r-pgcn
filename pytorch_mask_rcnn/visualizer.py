@@ -62,6 +62,9 @@ def show(images, preds=None, targets=None, classes=None, save_path=None):
                 fig.draw_instance_predictions(preds[i], targets[i], classes)
             else:
                 fig.draw_instance_predictions(preds[i], classes)
+        else:
+            print("no predictions!")
+            continue
         fig.show()
         if save_path is not None:
             if targets is None:
@@ -386,7 +389,7 @@ class Visualizer:
             labels = [labels[k] for k in sorted_idxs] if labels is not None else None
             masks = [masks[idx] for idx in sorted_idxs] if masks is not None else None
             polygons = [polygons[idx] for idx in sorted_idxs] if polygons is not None else None
-            edges = [edges[idx] for idx in sorted_idxs] if edges is not None else None
+            edges = [edges[idx] for idx in sorted_idxs] if edges is not None and len(edges) > 0 else None
             vertices = [vertices[idx] for idx in sorted_idxs] if vertices is not None else None
             assigned_colors = [assigned_colors[idx] for idx in sorted_idxs]
 
@@ -401,7 +404,8 @@ class Visualizer:
 
         # if gt_vertices is not None:
             # self.all_gt_vertices = gt_vertices[0].vertex.copy()
-
+        self.num_instances = num_instances
+        self.num_instances_gt = num_instances_gt
 
         for i in range(num_instances):
             color = assigned_colors[i]
@@ -472,11 +476,12 @@ class Visualizer:
                 # )
         # draw GT
         for i in range(num_instances_gt):
+
             if gt_masks is not None:
                 plygons = gt_masks[i].polygons
                 if plygons[1]:
                     for segment in plygons[0]:
-                        self.draw_polygon(segment.reshape(-1, 2), color, alpha=alpha, mask=True, gt=True)
+                        self.draw_polygon(segment.reshape(-1, 2), [1.000, 0.500, 0.000], alpha=alpha, mask=True, gt=True)
 
             if gt_polygons is not None:
                 gt_polygon = gt_polygons[i].polygon
@@ -584,76 +589,81 @@ class Visualizer:
 
     def show(self):
         H, W = self.img.shape[:2]
-        self.fig_pred = plt.figure(figsize=(W / 72, H / 72))
 
-        # Plot predictions
-        # plot mask prediction
-        ax = self.fig_pred.add_subplot(221)
-        img_out = self.output.get_image()
-        ax.imshow(img_out)
-        ax.set_title("mask prediction")
-        ax.axis("off")
+        if self.num_instances > 0:
+            self.fig_pred = plt.figure(figsize=(W / 72, H / 72))
 
-        # plot polygon prediction
-        ax = self.fig_pred.add_subplot(222)
-        img_out = self.output_poly.get_image()
-        ax.imshow(img_out)
-        ax.set_title("polygon prediction")
-        ax.axis("off")
+            # Plot predictions
+            # plot mask prediction
+            ax = self.fig_pred.add_subplot(221)
+            img_out = self.output.get_image()
+            ax.imshow(img_out)
+            ax.set_title("mask prediction")
+            ax.axis("off")
 
-        # plot edge prediction
-        ax = self.fig_pred.add_subplot(223)
-        img_out = self.img.copy()
-        img_out[self.all_edges == 1] = [0, 255, 0]  # add edges
-        ax.imshow(img_out.astype("uint8"))
-        ax.set_title("edge prediction")
-        ax.axis("off")
+            # plot polygon prediction
+            ax = self.fig_pred.add_subplot(222)
+            img_out = self.output_poly.get_image()
+            ax.imshow(img_out)
+            ax.set_title("polygon prediction")
+            ax.axis("off")
 
-        # plot vertex prediction
-        ax = self.fig_pred.add_subplot(224)
-        img_out = self.output_vertex.get_image()
-        # img_out[self.all_vertices == 1] = [255, 0, 0]  # add vertices
-        ax.imshow(img_out.astype("uint8"))
-        ax.set_title("vertex prediction")
-        ax.axis("off")
-        plt.show()
+            # plot edge prediction
+            ax = self.fig_pred.add_subplot(223)
+            img_out = self.img.copy()
+            img_out[self.all_edges == 1] = [255, 0, 0]  # add edges
+            ax.imshow(img_out.astype("uint8"))
+            ax.set_title("edge prediction")
+            ax.axis("off")
 
-        # plot GT
-        self.fig_gt = plt.figure(figsize=(W / 72, H / 72))
-        # plot mask gt
-        ax = self.fig_gt.add_subplot(221)
-        img_out = self.output_gtmask.get_image()
-        ax.imshow(img_out)
-        ax.set_title("mask gt")
-        ax.axis("off")
+            # plot vertex prediction
+            ax = self.fig_pred.add_subplot(224)
+            img_out = self.output_vertex.get_image()
+            # img_out[self.all_vertices == 1] = [255, 0, 0]  # add vertices
+            ax.imshow(img_out.astype("uint8"))
+            ax.set_title("vertex prediction")
+            ax.axis("off")
+            
+            plt.show()
 
-        # plot polygon gt
-        ax = self.fig_gt.add_subplot(222)
-        img_out = self.output_gtpoly.get_image()
-        ax.imshow(img_out)
-        ax.set_title("polygon gt")
-        ax.axis("off")
+        if self.num_instances_gt > 0:
+            # plot GT
+            self.fig_gt = plt.figure(figsize=(W / 72, H / 72))
+            # plot mask gt
+            ax = self.fig_gt.add_subplot(221)
+            img_out = self.output_gtmask.get_image()
+            ax.imshow(img_out)
+            ax.set_title("mask gt")
+            ax.axis("off")
 
-        # plot edge gt
-        ax = self.fig_gt.add_subplot(223)
-        img_out = self.img.copy()
-        img_out[self.all_gt_edges == 1] = [0, 255, 0]  # add edges
-        ax.imshow(img_out.astype("uint8"))
-        ax.set_title("edge gt")
-        ax.axis("off")
+            # plot polygon gt
+            ax = self.fig_gt.add_subplot(222)
+            img_out = self.output_gtpoly.get_image()
+            ax.imshow(img_out)
+            ax.set_title("polygon gt")
+            ax.axis("off")
 
-        # plot vertex gt
-        ax = self.fig_gt.add_subplot(224)
-        img_out = self.output_gtvertex.get_image()
-        # img_out[self.all_gt_vertices == 1] = [255, 0, 0]  # add vertices
-        plt.imshow(img_out.astype("uint8"))
-        ax.set_title("vertex gt")
-        ax.axis("off")
+            # plot edge gt
+            ax = self.fig_gt.add_subplot(223)
+            img_out = self.img.copy()
+            img_out[self.all_gt_edges == 1] = [0, 255, 0]  # add edges
+            ax.imshow(img_out.astype("uint8"))
+            ax.set_title("edge gt")
+            ax.axis("off")
 
-        plt.show()
+            # plot vertex gt
+            ax = self.fig_gt.add_subplot(224)
+            img_out = self.output_gtvertex.get_image()
+            # img_out[self.all_gt_vertices == 1] = [255, 0, 0]  # add vertices
+            plt.imshow(img_out.astype("uint8"))
+            ax.set_title("vertex gt")
+            ax.axis("off")
+
+            plt.show()
 
     def save_plot(self, file_path, file_path_gt=None):
-        self.fig_pred.savefig(file_path, bbox_inches='tight')
+        if self.num_instances > 0:
+            self.fig_pred.savefig(file_path, bbox_inches='tight')
 
         if file_path_gt is not None:
             self.fig_gt.savefig(file_path_gt, bbox_inches='tight')
