@@ -79,7 +79,7 @@ class COCODataset(GeneralizedDataset):
         poly_temp = poly_temp.reshape((-1, 1, 2))
         poly_temp = np.floor(poly_temp).astype(np.int32)
         # poly_temp = cv2.approxPolyDP(poly_temp, 0, False)[:, 0, :]
-        cv2.polylines(edge_mask, [poly_temp], True, [1])  # TODO: visualize edge mask
+        cv2.polylines(edge_mask, [poly_temp], True, [1])
         return edge_mask
 
     @staticmethod
@@ -92,7 +92,7 @@ class COCODataset(GeneralizedDataset):
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
         poly_temp = np.floor(poly_temp).astype(np.int32)
         # poly_temp = cv2.approxPolyDP(poly_temp, 0, False)[:, 0, :]
-        vertex_mask[poly_temp[:, 0], poly_temp[:, 1]] = 1.0
+        vertex_mask[poly_temp[:, 1], poly_temp[:, 0]] = 1.0
         return vertex_mask
 
     def make_polygon(self, poly, shape, bbox):
