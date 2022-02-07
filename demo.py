@@ -44,7 +44,7 @@ def main(args):
 
         with torch.no_grad():
             result = model(image)
-        pmr.show(image, result, target, ds.classes, "./images/output{}.jpg".format(i))
+        pmr.show(image, result, target, ds.classes, "./result_images/output{}".format(i))
 
         if i >= num_images - 1:
             break
