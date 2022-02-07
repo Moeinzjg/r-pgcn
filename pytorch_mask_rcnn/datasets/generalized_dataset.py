@@ -11,7 +11,7 @@ class GeneralizedDataset:
     Main class for Generalized Dataset.
     """
     
-    def __init__(self, max_workers=2, verbose=False):
+    def __init__(self, max_workers=2, verbose=True):
         self.max_workers = max_workers
         self.verbose = verbose
             
