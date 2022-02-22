@@ -1,12 +1,12 @@
-# PyTorch-Simple-MaskRCNN
+# R-PolyGCN
 
-A PyTorch implementation of simple Mask R-CNN.
+A PyTorch implementation of R-PolyGCN [1] and using simple Mask R-CNN repository.
 
-This repository is a toy example of Mask R-CNN with two features:
-- It is pure python code and can be run immediately using PyTorch 1.4 without build
-- Simplified construction and easy to understand how the model works
+The original repository of R-PolyGCN is https://github.com/Miracle2333/R-PolyGCN but seems it is not working.
 
-The code is based largely on [TorchVision](https://github.com/pytorch/vision), but simplified a lot and faster (1.5x).
+The code is based largely on [Pytorch Simple Mask R-CNN](https://github.com/Okery/PyTorch-Simple-MaskRCNN).
+
+[1] Zhao, K., Kamran, M., & Sohn, G. (2020). Boundary Regularized Building Footprint Extraction From Satellite Images Using Deep Neural Network. arXiv preprint arXiv:2006.13176.
 
 ## Requirements
 
@@ -16,23 +16,47 @@ The code is based largely on [TorchVision](https://github.com/pytorch/vision), b
 
 - **matplotlib**, **OpenCV** - visualizing images and results
 
-- **[pycocotools](https://github.com/cocodataset/cocoapi)** - for COCO dataset and evaluation; Windows version is [here](https://github.com/philferriere/cocoapi)
+- **[pycocotools](https://github.com/cocodataset/cocoapi)** - for COCO dataset and evaluation
 
-There is a problem with pycocotools for Windows. See [Issue #356](https://github.com/cocodataset/cocoapi/issues/356).
 
-Besides, it's better to remove the prints in pycocotools.
+You can also use conda and environment.yml file to recreate the environment:
+```
+conda env create -f environment.yml 
+```
+
+I added Recal@0.5 to the source code of pycocotools and installed it. 
+Below, you can find how I managed to do it:
+1) Clone the pycocotools repository
+```
+git clone https://github.com/ppwwyyxx/cocoapi.git
+```
+2) Install it:
+```
+pip install cython
+cd cocoapi/PythonAPI
+python setup.py develop  # this way, changes will apply without any rebuild
+```
+3) Change 3 lines of pycocotools/cocoeval.py so that it reports IOUs at 0.5 and 0.75 too:
+```
+stats = np.zeros((14,))  # line 459
+# Add 2 below lines after line 471
+stats[12] = _summarize(0, iouThr=.5, maxDets=self.params.maxDets[2])
+stats[13] = _summarize(0, iouThr=.75, maxDets=self.params.maxDets[2]) 
+```
 
 ## Datasets
 
-This repository supports VOC and COCO datasets.
+This repository supports SpaceNet dataset in COCO format.
+
+In order to use SpaceNet dataset you have to:
+1) download raw SpaceNet2 datasets from AWS (eg Vegas scene).
+2) convert it to COCO format and split it randomly using spacenet2coco.ipynb
 
 If you want to train your own dataset, you may:
 
 - write the correponding dataset code
 
 - convert your dataset to COCO-style
-
-**PASCAL VOC 2012**: ```http://host.robots.ox.ac.uk/pascal/VOC/voc2012/```
 
 **MS COCO 2017**: ```http://cocodataset.org/```
 
@@ -54,9 +78,9 @@ coco2017/
 The code will check the dataset first before start, filtering samples without annotations.
 
 ## Training
-
+You can run the training using the below command example, obviously you must set the arguments according to yours. 
 ```
-python train.py --use-cuda --iters 200 --dataset coco --data-dir /data/coco2017
+python train.py --use-cuda --iters -1 --dataset coco --data-dir /data/Vegas_coco_random_splits
 ```
 or modify the parameters in ```run.sh```, and run:
 ```
@@ -69,16 +93,20 @@ The code will save and resume automatically using the checkpoint file.
 
 ## Evaluation
 
-- Modify the parameters in ```eval.ipynb``` to test the model.
+Run the below command to evaluate the model using your preferred checkpoint.
+```
+python eval.py --ckpt-path maskrcnn_coco-35.pth
+```
+
+## Demo
+Run the below command for your preferred checkpoint.
+```
+python demo.py --ckpt-path maskrcnn_coco-35.pth
+```
 
 ![example](https://github.com/Okery/PyTorch-Simple-MaskRCNN/blob/master/image/001.png)
 
-## Performance
-
-The model utilizes part of TorchVision's weights, which is pretrained on COCO dataset.
-
-Test on VOC 2012 Segmentation val, on 1 RTX 2080Ti GPU:
-
-| model | backbone | imgs/s (train) | imgs/s (test)|epoch | bbox AP | mask AP |
-| ---- | ---- | --- | --- | -- | -- | -- |
-| Mask R-CNN | ResNet 50 | 11.5 | 15.8 | 5 | 52.2 | 37.0 |
+You can also see the training/validation logs using tensorboard:
+```
+tensorboard --logdir maskrcnn_results/logs/train
+```
