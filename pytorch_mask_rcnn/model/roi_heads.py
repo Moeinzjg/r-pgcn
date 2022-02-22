@@ -7,6 +7,18 @@ from .utils import Matcher, BalancedPositiveNegativeSampler, roi_align, get_init
 from .box_ops import BoxCoder, box_iou, process_box, nms
 
 
+def dice_loss(input, target):
+    'input must be the result of sigmoid'
+    smooth = 1.
+
+    iflat = input.view(-1)
+    tflat = target.view(-1)
+    intersection = (iflat * tflat).sum()
+    
+    return 1 - ((2. * intersection + smooth) /
+              (iflat.sum() + tflat.sum() + smooth))
+
+
 def fastrcnn_loss(class_logit, box_regression, label, regression_target):
     classifier_loss = F.cross_entropy(class_logit, label)
 
@@ -30,7 +42,7 @@ def maskrcnn_loss(mask_logit, proposal, matched_idx, label, gt_mask):
 
     idx = torch.arange(label.shape[0], device=label.device)
     mask_loss = F.binary_cross_entropy_with_logits(mask_logit[idx, label], mask_target)
-    return mask_loss
+    return mask_loss / 4
 
 
 def edgercnn_loss(edge_logit, proposal, matched_idx, label, gt_edge):
@@ -42,9 +54,10 @@ def edgercnn_loss(edge_logit, proposal, matched_idx, label, gt_edge):
     edge_target = roi_align(gt_edge, roi, 1., M, M, -1)[:, 0]
 
     idx = torch.arange(label.shape[0], device=label.device)
-    edge_loss = F.binary_cross_entropy_with_logits(edge_logit[idx, 0], edge_target)
-    # , pos_weight=torch.Tensor([32.0]).to(idx.device)
-    return edge_loss
+    edge_bce = F.binary_cross_entropy_with_logits(edge_logit[idx, 0], edge_target, pos_weight=torch.Tensor([28*28/50]).to(idx.device))
+    edge_dice = dice_loss(torch.sigmoid(edge_logit[idx, 0]), edge_target)
+    edge_loss = edge_bce + edge_dice
+    return 0.2 * edge_loss / 4
 
 
 def vertexrcnn_loss(vertex_logit, proposal, matched_idx, label, gt_vertex):
@@ -56,9 +69,8 @@ def vertexrcnn_loss(vertex_logit, proposal, matched_idx, label, gt_vertex):
     vertex_target = roi_align(gt_vertex, roi, 1., M, M, -1)[:, 0]
 
     idx = torch.arange(label.shape[0], device=label.device)
-    vertex_loss = F.binary_cross_entropy_with_logits(vertex_logit[idx, 0], vertex_target)
-    # , pos_weight=torch.Tensor([100.0]).to(idx.device)
-    return vertex_loss
+    vertex_loss = F.binary_cross_entropy_with_logits(vertex_logit[idx, 0], vertex_target, pos_weight=torch.Tensor([28*28/16]).to(idx.device))
+    return 2 * vertex_loss / 4
 
 
 def poly_matching_loss(pnum, pred, gt, matched_idx, loss_type="L1"):
@@ -103,7 +115,7 @@ def poly_matching_loss(pnum, pred, gt, matched_idx, loss_type="L1"):
 
     gt_right_order = torch.gather(gt_expand, 1, min_gt_id_to_gather).view(batch_size, pnum, 2)  # TODO: check the application of this
 
-    return gt_right_order, 0.75 * torch.mean(min_dis)  # TODO: 0.75 is added according to Kang's thesis. Remove it if it didn't work.
+    return gt_right_order, 0.25 * torch.mean(min_dis) / 4
 
 
 class RoIHeads(nn.Module):
