@@ -5,6 +5,7 @@ import re
 import time
 
 import torch
+from torch.optim.lr_scheduler import MultiStepLR
 from tensorboardX import SummaryWriter
 
 import pytorch_mask_rcnn as pmr
@@ -24,22 +25,25 @@ def main(args):
 
     d_val = pmr.datasets(args.dataset, args.data_dir, "val", train=True)  # set train=True for eval
 
-    args.warmup_iters = max(1000, len(d_train))
-
     # -------------------------------------------------------------------------- #
 
     print(args)
     num_classes = max(d_train.dataset.classes) + 1  # including background class
     model = pmr.maskrcnn_resnet50(False, num_classes, pretrained_backbone=True).to(device)
 
-    # Step1: Train the network till the end of localization (FA) module
-    train(model, 20, d_train, d_val, args, device, trainable='MASK')
+    if args.train_mode == "multistep":
+        # Step1: Train the network till the end of localization (FA) module
+        train(model, 20, d_train, d_val, args, device, trainable='MASK')
 
-    # Step2: Only Train poly augmentor and GCN
-    train(model, 30, d_train, d_val, args, device, trainable='FAGCN')
+        # Step2: Only Train poly augmentor and GCN
+        train(model, 30, d_train, d_val, args, device, trainable='FAGCN')
 
-    # Step3: Train all togather
-    train(model, 35, d_train, d_val, args, device, trainable='All')
+        # Step3: Train all togather
+        train(model, 35, d_train, d_val, args, device, trainable='All')
+    
+    elif args.train_mode == "simul":
+        # Train all togather
+        train(model, 35, d_train, d_val, args, device, trainable='All')
 
     print('-------------------- Finished! --------------------')
 
@@ -49,7 +53,6 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
     args.epochs = epochs
 
     if trainable == 'MASK':
-        # args.lr = 1e-3
         args.lr_steps = [13, 17]
         for param in model.head.feature_augmentor.parameters():
             param.requires_grad = False
@@ -61,7 +64,6 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
             param.requires_grad = False
 
     elif trainable == 'FAGCN':
-        # args.lr = 1e-4
         args.lr_steps = [27]
         for param in model.parameters():
             param.requires_grad = False
@@ -76,8 +78,10 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
             param.requires_grad = True
 
     elif trainable == 'All':
-        # args.lr = 1e-5
-        args.lr_steps = [35]
+        if args.train_mode == "simul":
+            args.lr_steps = [15, 30]
+        else:
+            args.lr_steps = [35]
         for param in model.parameters():
             param.requires_grad = True
 
@@ -89,7 +93,6 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
     optimizer = torch.optim.SGD(params, lr=args.lr,
                                 momentum=args.momentum,
                                 weight_decay=args.weight_decay)
-    lr_lambda = lambda x: 0.1 ** bisect.bisect(args.lr_steps, x)
 
     start_epoch = 0
 
@@ -112,13 +115,13 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
     log_dir = 'maskrcnn_results'
     writer = SummaryWriter(os.path.join(log_dir, 'logs', 'train'))
     # val_writer = SummaryWriter(os.path.join(log_dir, 'logs', 'train_val'))
-
+    
+    if args.train_mode == "simul":
+        scheduler = MultiStepLR(optimizer, milestones=args.lr_steps, gamma=0.1)
     for epoch in range(start_epoch, args.epochs):
         print("\nepoch: {}".format(epoch + 1))
 
         A = time.time()
-        args.lr_epoch = lr_lambda(epoch) * args.lr
-        print("lr_epoch: {:.5f}, factor: {:.5f}".format(args.lr_epoch, lr_lambda(epoch)))
         iter_train = pmr.train_one_epoch(model, trainable, optimizer, d_train, device, epoch, args, writer)
         A = time.time() - A
         B = time.time()
@@ -132,6 +135,9 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
         print('polygon', rpolygcn_eval_output.get_AP())
 
         pmr.save_ckpt(model, optimizer, trained_epoch, args.ckpt_path, eval_info=str(eval_output))
+
+        if args.train_mode == "simul":
+            scheduler.step()
 
         # it will create many checkpoint files during training, so delete some.
         prefix, ext = os.path.splitext(args.ckpt_path)
@@ -168,6 +174,8 @@ if __name__ == "__main__":
 
     parser.add_argument("--iters", type=int, default=1000, help="max iters per epoch, -1 denotes auto")
     parser.add_argument("--print-freq", type=int, default=100, help="frequency of printing losses")
+    parser.add_argument("--train_mode", default="simul", choices=["simul", "multistep"], 
+                        help="You should choose to train the network in multisteps (Mask R-CNN->FA->PolyGCN) or simultaneously")
     args = parser.parse_args()
 
     if args.lr is None:

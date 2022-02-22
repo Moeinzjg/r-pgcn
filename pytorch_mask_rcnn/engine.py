@@ -11,8 +11,6 @@ except:
 
 
 def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, args, writer):
-    # for p in optimizer.param_groups:
-    #     p["lr"] = args.lr_epoch
 
     iters = len(data_loader) if args.iters < 0 else args.iters
 
@@ -24,10 +22,6 @@ def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, arg
     for i, (image, target) in enumerate(data_loader):
         T = time.time()
         num_iters = epoch * len(data_loader) + i
-        if num_iters <= args.warmup_iters:
-            r = num_iters / args.warmup_iters
-            for j, p in enumerate(optimizer.param_groups):
-                p["lr"] = r * args.lr_epoch
 
         image = image.to(device)
         target.pop('global_polygons')
