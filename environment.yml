@@ -1,4 +1,4 @@
-name: rpgcn_mine
+name: rpgcn
 channels:
   - pytorch
   - conda-forge
