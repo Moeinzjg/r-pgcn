@@ -56,22 +56,23 @@ If you want to train your own dataset, you may:
 
 - write the correponding dataset code
 
-- convert your dataset to COCO-style
+- convert your dataset to COCO-style ([MS COCO dataset](http://cocodataset.org/))
 
-**MS COCO 2017**: ```http://cocodataset.org/```
-
-COCO dataset directory should be like this:
+Dataset directory should be like this:
 ```
-coco2017/
+dataset_name/
     annotations/
-        instances_train2017.json
-        instances_val2017.json
-        ...
-    train2017/
+        instances_train.json
+        instances_val.json
+        instances_test.json
+    train/
         000000000009.jpg
         ...
-    val2017/
+    val/
         000000000139.jpg
+        ...
+    test/
+        000000000256.jpg
         ...
 ```
 
