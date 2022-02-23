@@ -321,6 +321,7 @@ pr.diff
 # Folders
 result_images
 maskrcnn_results
+data
 
 # Special Files
 pytorch_mask_rcnn/gpu_info.json
