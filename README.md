@@ -105,7 +105,7 @@ Run the below command for your preferred checkpoint.
 python demo.py --ckpt-path maskrcnn_coco-35.pth
 ```
 
-![example](https://github.com/Okery/PyTorch-Simple-MaskRCNN/blob/master/image/001.png)
+![example](https://github.com/Moeinzjg/r-pgcn/blob/master/example.jpg)
 
 You can also see the training/validation logs using tensorboard:
 ```
