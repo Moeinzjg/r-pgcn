@@ -271,7 +271,7 @@ class COCODataset(GeneralizedDataset):
             masks = torch.stack(masks)
             edge_masks = torch.stack(edge_masks)
             vertex_masks = torch.stack(vertex_masks)
-            polygons = torch.tensor(polygons, dtype=torch.float32)
+            polygons = torch.tensor(np.array(polygons), dtype=torch.float32)
             # global_polygons = torch.tensor(global_polygons, dtype=torch.float32)
 
         target = dict(image_id=torch.tensor([img_id]), boxes=boxes, labels=labels,
