@@ -319,7 +319,6 @@ pr.diff
 *.pth
 
 # Folders
-result_images
 maskrcnn_results
 data
 
