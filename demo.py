@@ -55,7 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset", default="coco")
     parser.add_argument("--data_dir", default="../Vegas_coco_random_splits")
     parser.add_argument("--ckpt_path", default="maskrcnn_coco-25.pth")
-    parser.add_argument("--num_img", default=3)
+    parser.add_argument("--num_img", default=3, type=int)
     args = parser.parse_args()
 
     args.use_cuda = True
