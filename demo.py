@@ -17,7 +17,7 @@ def main(args):
     print("\ndevice: {}".format(device))
 
     ds = pmr.datasets(dataset, data_dir, "test", train=True)
-    d = torch.utils.data.DataLoader(ds, shuffle=True)
+    d = torch.utils.data.DataLoader(ds, shuffle=args.shuffle)
 
     model = pmr.maskrcnn_resnet50(False, max(ds.classes) + 1).to(device)
     model.eval()
@@ -56,6 +56,8 @@ if __name__ == "__main__":
     parser.add_argument("--data_dir", default="../Vegas_coco_random_splits")
     parser.add_argument("--ckpt_path", default="maskrcnn_coco-25.pth")
     parser.add_argument("--num_img", default=3, type=int)
+    parser.add_argument("--shuffle", default=True, type=bool)
+
     args = parser.parse_args()
 
     args.use_cuda = True
