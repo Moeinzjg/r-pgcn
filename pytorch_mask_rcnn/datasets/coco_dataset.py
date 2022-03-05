@@ -224,7 +224,24 @@ class COCODataset(GeneralizedDataset):
 
             psamplenp = np.concatenate(psample, axis=0)
             return psamplenp
+    
+    @staticmethod
+    def expand_bbox(bbox, image_shape):
+        x_min, y_min, w, h = bbox
+        x_min -= 0.1 * w
+        y_min -= 0.1 * h
+        w += 0.1 * w
+        h += 0.1 * h
 
+        x_min = max(0, x_min)
+        y_min = max(0, y_min)
+        w_min = min(image_shape[1], w)
+        h_min = min(image_shape[0], h)
+
+        bbox = [x_min, y_min, w, h]
+
+        return bbox
+    
     def get_target(self, img_id):
         img_id = int(img_id)
         ann_ids = self.coco.getAnnIds(img_id)
@@ -242,12 +259,14 @@ class COCODataset(GeneralizedDataset):
                 mask = self.coco.annToMask(ann)
                 mask = torch.tensor(mask, dtype=torch.uint8)
                 poly = ann['segmentation'][0]
+                box = self.expand_bbox(ann['bbox'], mask.shape)
+
                 # sanity check: if it is a real polygon in image or not
                 if self.poly_check(poly, mask.shape) == False:
                     continue
-                if self.bbox_check(ann['bbox']) == False:
+                if self.bbox_check(box) == False:
                     continue
-                polygon = self.make_polygon(poly, mask.shape, ann['bbox'])
+                polygon = self.make_polygon(poly, mask.shape, box)
                 polygons.append(polygon)
 
                 global_polygon = self.make_global_polygon(poly, mask.shape)
@@ -261,7 +280,7 @@ class COCODataset(GeneralizedDataset):
                 vertex_mask = torch.tensor(vertex_mask, dtype=torch.uint8)
                 vertex_masks.append(vertex_mask)
 
-                boxes.append(ann['bbox'])
+                boxes.append(box)
                 masks.append(mask)
                 labels.append(ann["category_id"])
 
