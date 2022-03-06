@@ -124,17 +124,10 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
         A = time.time()
         iter_train = pmr.train_one_epoch(model, trainable, optimizer, d_train, device, epoch, args, writer)
         A = time.time() - A
-        B = time.time()
-        eval_output, rpolygcn_eval_output, iter_eval, _ = pmr.evaluate(model, d_val, device, args)
-        B = time.time() - B
 
         trained_epoch = epoch + 1
-        print("training: {:.1f} s, evaluation: {:.1f} s".format(A, B))
-        pmr.collect_gpu_info("maskrcnn", [1 / iter_train, 1 / iter_eval])
-        print('maskrcnn', eval_output.get_AP())
-        print('polygon', rpolygcn_eval_output.get_AP())
 
-        pmr.save_ckpt(model, optimizer, trained_epoch, args.ckpt_path, eval_info=str(eval_output))
+        pmr.save_ckpt(model, optimizer, trained_epoch, args.ckpt_path)
 
         if args.train_mode == "simul":
             scheduler.step()
