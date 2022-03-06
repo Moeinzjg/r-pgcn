@@ -103,7 +103,7 @@ def train(model, epochs, d_train, d_val, args, device, trainable='All'):
     if ckpts:
         checkpoint = torch.load(ckpts[-1], map_location=device)  # load last checkpoint
         model.load_state_dict(checkpoint["model"])
-        # optimizer.load_state_dict(checkpoint["optimizer"])
+        optimizer.load_state_dict(checkpoint["optimizer"])
         start_epoch = checkpoint["epochs"]
         del checkpoint
         torch.cuda.empty_cache()
