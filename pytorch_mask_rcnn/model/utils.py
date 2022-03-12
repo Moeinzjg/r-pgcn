@@ -57,7 +57,7 @@ class BalancedPositiveNegativeSampler:
         return pos_idx, neg_idx
 
     
-def roi_align(features, rois, spatial_scale, pooled_height, pooled_width, sampling_ratio):  # TODO: can be replaced with pyramidroialign (MultiScale in torchvision)
+def roi_align(features, rois, spatial_scale, pooled_height, pooled_width, sampling_ratio):
     if torch.__version__ >= "1.5.0":
         return torch.ops.torchvision.roi_align(
             features, rois, spatial_scale, pooled_height, pooled_width, sampling_ratio, False)
@@ -170,10 +170,7 @@ def gather_feature(id, feature):
                                                 id.size(1),
                                                 feature.size(2)).detach()
     cnn_out = torch.FloatTensor()
-    try:
-        cnn_out = torch.gather(feature, 1, feature_id).float()
-    except RuntimeError:
-        print(feature_id.shape, feature.shape, id.shape)
+    cnn_out = torch.gather(feature, 1, feature_id).float()
 
     return cnn_out
 

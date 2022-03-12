@@ -1,6 +1,7 @@
 import argparse
 import os
 import time
+import re
 
 import torch
 
@@ -19,8 +20,14 @@ def main(args):
 
     print(args)
     num_classes = max(d_test.classes) + 1
-    model = pmr.maskrcnn_resnet50(False, num_classes).to(device)
 
+    if 'fpn' in args.backbone:
+        backbone_name = re.findall('(.*?)_fpn', args.backbone)[0]
+        model = pmr.maskrcnn_resnet_fpn(pretrained=False, num_classes=num_classes,
+                                        pretrained_backbone=True, backbone_name=backbone_name).to(device)
+    else:
+        model = pmr.maskrcnn_resnet50(False, num_classes, pretrained_backbone=True).to(device)
+    
     checkpoint = torch.load(args.ckpt_path, map_location=device)
     model.load_state_dict(checkpoint["model"])
     # print(checkpoint["eval_info"])
@@ -53,6 +60,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-dir", default="../Vegas_coco_random_splits")
     parser.add_argument("--ckpt-path", default="maskrcnn_coco-25.pth")
     parser.add_argument("--iters", type=int, default=-1)  # number of iterations, minus means the entire dataset
+    parser.add_argument("--backbone", type=str, default="resnet50_fpn", choices=["resnet50", "resnet50_fpn", "resnet101_fpn"])
     args = parser.parse_args()  # [] is needed if you're using Jupyter Notebook.
 
     args.use_cuda = True

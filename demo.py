@@ -1,4 +1,5 @@
 import os
+import re
 import argparse
 
 import torch
@@ -20,7 +21,13 @@ def main(args):
     ds = pmr.datasets(dataset, data_dir, "test", train=True)
     d = torch.utils.data.DataLoader(ds, shuffle=shuffle)
 
-    model = pmr.maskrcnn_resnet50(False, max(ds.classes) + 1).to(device)
+    if 'fpn' in args.backbone:
+        backbone_name = re.findall('(.*?)_fpn', args.backbone)[0]
+        model = pmr.maskrcnn_resnet_fpn(pretrained=False, num_classes=max(ds.classes) + 1,
+                                        pretrained_backbone=True, backbone_name=backbone_name).to(device)
+    else:
+        model = pmr.maskrcnn_resnet50(False, max(ds.classes) + 1, pretrained_backbone=True).to(device)
+
     model.eval()
     model.head.score_thresh = 0.5
 
@@ -58,6 +65,7 @@ if __name__ == "__main__":
     parser.add_argument("--ckpt_path", default="maskrcnn_coco-25.pth")
     parser.add_argument("--num_img", default=3, type=int)
     parser.add_argument("--shuffle", action="store_true")
+    parser.add_argument("--backbone", type=str, default="resnet50_fpn", choices=["resnet50", "resnet50_fpn", "resnet101_fpn"])
 
     args = parser.parse_args()
 

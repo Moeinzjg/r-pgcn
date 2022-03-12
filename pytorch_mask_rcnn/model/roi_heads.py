@@ -204,8 +204,8 @@ class RoIHeads(nn.Module):
     def forward(self, feature, proposal, image_shape, target):
         if self.training:
             proposal, matched_idx, label, regression_target = self.select_training_samples(proposal, target)
-
-        box_feature = self.box_roi_pool(feature, proposal, image_shape)
+        w, h = image_shape
+        box_feature = self.box_roi_pool(feature, [proposal], [(w, h)])
         class_logit, box_regression = self.box_predictor(box_feature)
 
         result, losses = {}, {}
@@ -245,27 +245,23 @@ class RoIHeads(nn.Module):
                                        adjacency=torch.empty((0, self.num_points, self.num_points))))
                     return result, losses
 
-            mask_feature = self.mask_roi_pool(feature, mask_proposal, image_shape)
+            mask_feature = self.mask_roi_pool(feature, [mask_proposal], [(w, h)])
             mask_logit = self.mask_predictor(mask_feature)
 
-            augmentation_feature = self.augmentation_roi_pool(feature, mask_proposal, image_shape)  # TODO: be careful about mask proposal
-            # edge_logit = self.edge_predictor(augmentation_feature)
-            # vertex_logit = self.vertex_predictor(augmentation_feature)
+            augmentation_feature = self.augmentation_roi_pool(feature, [mask_proposal], [(w, h)])
             edge_logit, vertex_logit = self.feature_augmentor(augmentation_feature)
-
             # Feature augmentation
             enhanced_feature = torch.cat([augmentation_feature, edge_logit, vertex_logit], 1)
             poly_feature = self.poly_augmentor(enhanced_feature)
 
             # GCN
-            # TODO: We can define an empty list here to save pred_polygons of each step
             # create circle polygon data
             init_polys = get_initial_points(self.num_points)
             init_polys = torch.from_numpy(init_polys).unsqueeze(0).repeat(poly_feature.shape[0], 1, 1)
             polygcn_feature = poly_feature.permute(0, 2, 3, 1).view(-1, poly_feature.shape[-1]**2, poly_feature.shape[1])
             pred_polygon, pred_adjacent = self.polygon_predictor(polygcn_feature, init_polys)
 
-            if self.training:  # TODO: Don't we need different inference pipline for polygon?
+            if self.training:
                 gt_mask = target['masks']
                 gt_edge = target['edges']
                 gt_vertex = target['vertices']

@@ -1,10 +1,13 @@
 from collections import OrderedDict
 
+import torch
 import torch.nn.functional as F
 from torch import nn
 from torch.utils.model_zoo import load_url
 from torchvision import models
+from torchvision.models.detection import backbone_utils, _utils
 from torchvision.ops import misc
+from torchvision.ops import MultiScaleRoIAlign
 
 from .utils import AnchorGenerator
 from .rpn import RPNHead, RegionProposalNetwork
@@ -114,8 +117,7 @@ class MaskRCNN(nn.Module):
              rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh)
 
         #------------ RoIHeads --------------------------
-        box_roi_pool = RoIAlign(output_size=(7, 7), sampling_ratio=2)
-
+        box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
         resolution = box_roi_pool.output_size[0]
         in_channels = out_channels * resolution ** 2
         mid_channels = 1024
@@ -127,15 +129,12 @@ class MaskRCNN(nn.Module):
                              box_reg_weights, box_score_thresh,
                              box_nms_thresh, box_num_detections)
 
-        self.head.mask_roi_pool = RoIAlign(output_size=(14, 14), sampling_ratio=2)
-        self.head.augmentation_roi_pool = RoIAlign(output_size=(28, 28), sampling_ratio=2)
-
+        self.head.mask_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=2)
+        self.head.augmentation_roi_pool = MultiScaleRoIAlign(featmap_names=["0"], output_size=28, sampling_ratio=2)
         layers_mask = (256, 256, 256, 256)
         dim_reduced_mask = 256
 
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, layers_mask, dim_reduced_mask, num_classes)
-        # self.head.edge_predictor = EdgeRCNNPredictor(out_channels, num_classes)
-        # self.head.vertex_predictor = VertexRCNNPredictor(out_channels, num_classes)
         self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256, internal=2)
         self.head.poly_augmentor = PolyAugmentor(out_channels)
         self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=28)
@@ -154,8 +153,20 @@ class MaskRCNN(nn.Module):
         image, target = self.transformer(image, target)
         image_shape = image.shape[-2:]
         feature = self.backbone(image)
+        proposal = []
+        rpn_losses = {'rpn_objectness_loss': 0.0, 'rpn_box_loss': 0.0}
+        for k in feature.keys():
+            prop, rpn_loss = self.rpn(feature[k], image_shape, target)
+            proposal.append(prop)
+            if 'rpn_objectness_loss' in rpn_loss:
+                rpn_losses['rpn_objectness_loss'] += rpn_loss['rpn_objectness_loss']
+                rpn_losses['rpn_box_loss'] += rpn_loss['rpn_box_loss']
 
-        proposal, rpn_losses = self.rpn(feature, image_shape, target)
+        if rpn_losses['rpn_objectness_loss']:
+            rpn_losses['rpn_objectness_loss'] /= 5
+            rpn_losses['rpn_box_loss'] /= 5
+        
+        proposal = torch.vstack(proposal)
         result, roi_losses = self.head(feature, proposal, image_shape, target)
 
         if self.training:
@@ -208,57 +219,6 @@ class MaskRCNNPredictor(nn.Sequential):
         for name, param in self.named_parameters():
             if 'weight' in name:
                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
-
-
-# class EdgeRCNNPredictor(nn.Sequential):
-#     def __init__(self, in_channels, num_classes):
-#         """
-#         Arguments:
-#             in_channels (int)
-#             layers (Tuple[int])
-#             dim_reduced (int)
-#             num_classes (int)
-#         """
-
-#         d = OrderedDict()
-
-#         d['edge_conv'] = nn.Conv2d(in_channels, 2, 3, 1, 1)
-#         d['edge_relu'] = nn.ReLU(inplace=True)
-
-#         d['edge_conv_trans'] = nn.ConvTranspose2d(256, 256, 2, 2, 0)
-#         d['relu_trans'] = nn.ReLU(inplace=True)
-#         d['edge_fcn_logits'] = nn.Conv2d(256, num_classes, 1, 1, 0)
-#         super().__init__(d)
-
-#         for name, param in self.named_parameters():
-#             if 'weight' in name:
-#                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
-
-
-# class VertexRCNNPredictor(nn.Sequential):
-#     def __init__(self, in_channels, num_classes):
-#         """
-#         Arguments:
-#             in_channels (int)
-#             layers (Tuple[int])
-#             dim_reduced (int)
-#             num_classes (int)
-#         """
-
-#         d = OrderedDict()
-
-#         d['vertex_fcn1'] = nn.Conv2d(in_channels, 256, 3, 1, 1)
-#         d['vertex_relu1'] = nn.ReLU(inplace=True)
-
-#         d['vertex_conv_trans'] = nn.ConvTranspose2d(256, 256, 2, 2, 0)
-#         d['veretx_relu_trans'] = nn.ReLU(inplace=True)
-#         d['vertex_fcn_logits'] = nn.Conv2d(256, num_classes, 1, 1, 0)
-#         super().__init__(d)
-
-#         for name, param in self.named_parameters():
-#             if 'weight' in name:
-#                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
-
 
 class FeatureAugmentor(nn.Module):
     def __init__(self, feats_dim=28, feats_channels=256, internal=2):
@@ -360,14 +320,13 @@ def maskrcnn_resnet50(pretrained, num_classes, pretrained_backbone=True):
         pretrained (bool): If True, returns a model pre-trained on COCO train2017.
         num_classes (int): number of classes (including the background).
     """
-    # TODO: enable pretrained maskrcnn for r-polygcn
     if pretrained:
         pretrained_backbone = False
 
     backbone = ResBackbone('resnet50', pretrained_backbone)
     model = MaskRCNN(backbone, num_classes)
 
-    if pretrained:  # TODO: Add resenet101
+    if pretrained:
         model_urls = {
             'maskrcnn_resnet50_fpn_coco':
                 'https://download.pytorch.org/models/maskrcnn_resnet50_fpn_coco-bf2d0c1e.pth',
@@ -390,4 +349,65 @@ def maskrcnn_resnet50(pretrained, num_classes, pretrained_backbone=True):
 
         model.load_state_dict(msd)
 
+    return model
+
+
+def maskrcnn_resnet_fpn(
+    pretrained=False, progress=True, num_classes=2, pretrained_backbone=True, 
+    trainable_backbone_layers=None, backbone_name='resnet50', **kwargs):
+    """
+    Constructs a Mask R-CNN model with a ResNet-50/101-FPN backbone.
+    Reference: `"Mask R-CNN" <https://arxiv.org/abs/1703.06870>`_.
+    The input to the model is expected to be a list of tensors, each of shape ``[C, H, W]``, one for each
+    image, and should be in ``0-1`` range. Different images can have different sizes.
+    The behavior of the model changes depending if it is in training or evaluation mode.
+    During training, the model expects both the input tensors, as well as a targets (list of dictionary),
+    containing:
+        - boxes (``FloatTensor[N, 4]``): the ground-truth boxes in ``[x1, y1, x2, y2]`` format, with
+          ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
+        - labels (``Int64Tensor[N]``): the class label for each ground-truth box
+        - masks (``UInt8Tensor[N, H, W]``): the segmentation binary masks for each instance
+    The model returns a ``Dict[Tensor]`` during training, containing the classification and regression
+    losses for both the RPN and the R-CNN, and the mask loss.
+    During inference, the model requires only the input tensors, and returns the post-processed
+    predictions as a ``List[Dict[Tensor]]``, one for each input image. The fields of the ``Dict`` are as
+    follows, where ``N`` is the number of detected instances:
+        - boxes (``FloatTensor[N, 4]``): the predicted boxes in ``[x1, y1, x2, y2]`` format, with
+          ``0 <= x1 < x2 <= W`` and ``0 <= y1 < y2 <= H``.
+        - labels (``Int64Tensor[N]``): the predicted labels for each instance
+        - scores (``Tensor[N]``): the scores or each instance
+        - masks (``UInt8Tensor[N, 1, H, W]``): the predicted masks for each instance, in ``0-1`` range. In order to
+          obtain the final segmentation masks, the soft masks can be thresholded, generally
+          with a value of 0.5 (``mask >= 0.5``)
+    For more details on the output and on how to plot the masks, you may refer to :ref:`instance_seg_output`.
+    Mask R-CNN is exportable to ONNX for a fixed batch size with inputs images of fixed size.
+    Example::
+        >>> model = torchvision.models.detection.maskrcnn_resnet50_fpn(pretrained=True)
+        >>> model.eval()
+        >>> x = [torch.rand(3, 300, 400), torch.rand(3, 500, 400)]
+        >>> predictions = model(x)
+        >>>
+        >>> # optionally, if you want to export the model to ONNX:
+        >>> torch.onnx.export(model, x, "mask_rcnn.onnx", opset_version = 11)
+    Args:
+        pretrained (bool): If True, returns a model pre-trained on COCO train2017
+        progress (bool): If True, displays a progress bar of the download to stderr
+        num_classes (int): number of output classes of the model (including the background)
+        pretrained_backbone (bool): If True, returns a model with backbone pre-trained on Imagenet
+        trainable_backbone_layers (int): number of trainable (not frozen) resnet layers starting from final block.
+            Valid values are between 0 and 5, with 5 meaning all backbone layers are trainable. If ``None`` is
+            passed (the default) this value is set to 3.
+    """
+    model_urls = {
+    "maskrcnn_resnet50_fpn_coco": "https://download.pytorch.org/models/maskrcnn_resnet50_fpn_coco-bf2d0c1e.pth",
+    "maskrcnn_resnet101_fpn_coco": "https://download.pytorch.org/models/maskrcnn_resnet101_fpn_coco-bf2d0c1e.pth",
+    }
+
+    backbone = backbone_utils.resnet_fpn_backbone(backbone_name, pretrained=pretrained_backbone, norm_layer=misc.FrozenBatchNorm2d,
+                                                  trainable_layers=3, returned_layers=None, extra_blocks=None)
+    model = MaskRCNN(backbone, num_classes, **kwargs)
+    if pretrained:
+        state_dict = load_state_dict_from_url(model_urls["maskrcnn_" + backbonename + "_fpn_coco"], progress=progress)
+        model.load_state_dict(state_dict)
+        _utils.overwrite_eps(model, 0.0)
     return model
