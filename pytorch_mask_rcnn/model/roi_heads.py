@@ -246,13 +246,15 @@ class RoIHeads(nn.Module):
                     return result, losses
 
             mask_feature = self.mask_roi_pool(feature, [mask_proposal], [(w, h)])
-            mask_logit = self.mask_predictor(mask_feature)
+            mask_logit, features_mask = self.mask_predictor(mask_feature)
+            
 
             augmentation_feature = self.augmentation_roi_pool(feature, [mask_proposal], [(w, h)])
-            edge_logit, vertex_logit = self.feature_augmentor(augmentation_feature)
+            edge_logit, vertex_logit, features_edge, features_vertex = self.feature_augmentor(augmentation_feature)
+
             # Feature augmentation
-            enhanced_feature = torch.cat([augmentation_feature, edge_logit, vertex_logit], 1)
-            poly_feature = self.poly_augmentor(enhanced_feature)
+            # enhanced_feature = torch.cat([features_mask, features_edge, features_vertex], 1)
+            poly_feature = self.poly_augmentor(features_mask, features_edge, features_vertex)
 
             # GCN
             # create circle polygon data
