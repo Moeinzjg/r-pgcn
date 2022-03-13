@@ -131,13 +131,11 @@ class MaskRCNN(nn.Module):
 
         self.head.mask_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=2)
         self.head.augmentation_roi_pool = MultiScaleRoIAlign(featmap_names=["0"], output_size=28, sampling_ratio=2)
-        layers_mask = (256, 256, 256, 256)
-        dim_reduced_mask = 256
 
-        self.head.mask_predictor = MaskRCNNPredictor(out_channels, layers_mask, dim_reduced_mask, num_classes)
+        self.head.mask_predictor = MaskRCNNPredictor(out_channels, num_classes)
         self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256, internal=2)
-        self.head.poly_augmentor = PolyAugmentor(out_channels)
-        self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=28)
+        self.head.poly_augmentor = PolyAugmentor()
+        self.head.polygon_predictor = PolyGNN(16, feature_grid_size=28)
 
         # ------------ Transformer --------------------------
         self.transformer = Transformer(
@@ -194,31 +192,69 @@ class FastRCNNPredictor(nn.Module):
         return score, bbox_delta
 
 
-class MaskRCNNPredictor(nn.Sequential):
-    def __init__(self, in_channels, layers, dim_reduced, num_classes):
+# class MaskRCNNPredictor(nn.Sequential):
+#     def __init__(self, in_channels, layers, dim_reduced, num_classes):
+#         """
+#         Arguments:
+#             in_channels (int)
+#             layers (Tuple[int])
+#             dim_reduced (int)
+#             num_classes (int)
+#         """
+
+#         d = OrderedDict()
+#         next_feature = in_channels
+#         for layer_idx, layer_features in enumerate(layers, 1):
+#             d['mask_fcn{}'.format(layer_idx)] = nn.Conv2d(next_feature, layer_features, 3, 1, 1)
+#             d['mask_relu{}'.format(layer_idx)] = nn.ReLU(inplace=True)
+#             next_feature = layer_features
+
+#         d['mask_conv_trans'] = nn.ConvTranspose2d(next_feature, dim_reduced, 2, 2, 0)
+#         d['mask_relu_trans'] = nn.ReLU(inplace=True)
+#         d['mask_fcn_logits'] = nn.Conv2d(dim_reduced, num_classes, 1, 1, 0)
+#         super().__init__(d)
+
+#         for name, param in self.named_parameters():
+#             if 'weight' in name:
+#                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
+
+class MaskRCNNPredictor(nn.Module):
+    def __init__(self, in_channels, num_classes):
         """
         Arguments:
             in_channels (int)
-            layers (Tuple[int])
-            dim_reduced (int)
             num_classes (int)
         """
+        super(MaskRCNNPredictor, self).__init__()
 
-        d = OrderedDict()
-        next_feature = in_channels
-        for layer_idx, layer_features in enumerate(layers, 1):
-            d['mask_fcn{}'.format(layer_idx)] = nn.Conv2d(next_feature, layer_features, 3, 1, 1)
-            d['mask_relu{}'.format(layer_idx)] = nn.ReLU(inplace=True)
-            next_feature = layer_features
+        self.conv1 = nn.Conv2d(in_channels, 256, 3, 1, 1)
+        self.relu1 = nn.ReLU(inplace=True)
+        self.conv2 = nn.Conv2d(256, 256, 3, 1, 1)
+        self.relu2 = nn.ReLU(inplace=True)
+        self.conv3 = nn.Conv2d(256, 256, 3, 1, 1)
+        self.relu3 = nn.ReLU(inplace=True)
+        self.conv4 = nn.Conv2d(256, 256, 3, 1, 1)
+        self.relu4 = nn.ReLU(inplace=True)
 
-        d['mask_conv_trans'] = nn.ConvTranspose2d(next_feature, dim_reduced, 2, 2, 0)
-        d['mask_relu_trans'] = nn.ReLU(inplace=True)
-        d['mask_fcn_logits'] = nn.Conv2d(dim_reduced, num_classes, 1, 1, 0)
-        super().__init__(d)
+        self.conv_trans = nn.ConvTranspose2d(256, 256, 2, 2, 0)
+        self.relu_trans = nn.ReLU(inplace=True)
+        self.conv_fcn_logits = nn.Conv2d(256, num_classes, 1, 1, 0)
 
         for name, param in self.named_parameters():
             if 'weight' in name:
                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
+        
+    def forward(self, feats):
+        f1 = self.relu1(self.conv1(feats))
+        f2 = self.relu2(self.conv2(f1))
+        f3 = self.relu3(self.conv3(f2))
+        f4 = self.relu4(self.conv4(f3))
+
+        f_trans = self.relu_trans(self.conv_trans(f4))
+        logits = self.conv_fcn_logits(f_trans)
+
+        return logits, f_trans
+
 
 class FeatureAugmentor(nn.Module):
     def __init__(self, feats_dim=28, feats_channels=256, internal=2):
@@ -248,38 +284,98 @@ class FeatureAugmentor(nn.Module):
         """
         batch_size = feats.size(0)
         conv_edge = self.edge_conv(feats)
-        conv_edge = F.relu(conv_edge, inplace=True)
-        edge_logits = self.edge_fc(conv_edge.view(batch_size, -1))
+        features_edge = F.relu(conv_edge, inplace=True)
+        edge_logits = self.edge_fc(features_edge.view(batch_size, -1))
 
         conv_vertex = self.vertex_conv(feats)
-        conv_vertex = F.relu(conv_vertex)
-        vertex_logits = self.vertex_fc(conv_vertex.view(batch_size, -1))
+        features_vertex = F.relu(conv_vertex)
+        vertex_logits = self.vertex_fc(features_vertex.view(batch_size, -1))
 
         edge_logits = edge_logits.view((-1, self.grid_size, self.grid_size)).unsqueeze(1)
         vertex_logits = vertex_logits.view((-1, self.grid_size, self.grid_size)).unsqueeze(1)
 
-        return edge_logits, vertex_logits
+        return edge_logits, vertex_logits, features_edge, features_vertex
 
 
-class PolyAugmentor(nn.Sequential):
-    def __init__(self, in_channels):
+# class PolyAugmentor(nn.Sequential):
+#     def __init__(self, in_channels):
+#         """
+#         Equivalent to Edge Annotation in Kang's
+#         Arguments:
+#             in_channels (int)
+#         """
+
+#         d = OrderedDict()
+
+#         d['cnn1'] = nn.Conv2d(in_channels, 256, 3, 1, 1, bias=False)
+#         d['bn1'] = nn.BatchNorm2d(256)
+#         d['relu1'] = nn.ReLU(inplace=True)
+
+#         d['cnn2'] = nn.Conv2d(256, 256, 3, 1, 1, bias=False)
+#         d['bn2'] = nn.BatchNorm2d(256)
+#         d['relu2'] = nn.ReLU(inplace=True)
+
+#         super().__init__(d)
+
+class PolyAugmentor(nn.Module):
+    def __init__(self):
+        super(PolyAugmentor, self).__init__()
         """
-        Equivalent to Edge Annotation in Kang's
+        Based on TOS-Net
         Arguments:
             in_channels (int)
         """
 
-        d = OrderedDict()
+        self.mask_trans = nn.Sequential(nn.Conv2d(256, 48, 1, 1, bias=False),
+                                        nn.BatchNorm2d(48),
+                                        nn.ReLU(inplace=True))
+        self.fuse0 = nn.Sequential(nn.Conv2d(48+2+2, 16, 1, 1, bias=False),
+                                   nn.BatchNorm2d(16),
+                                   nn.ReLU(inplace=True))
+        self.fuse1 = SimpleBottleneck(16)
+        self.fuse2 = SimpleBottleneck(16)
+        self.fuse3 = SimpleBottleneck(16)
+        # self.mask = nn.Conv2d(16, n_classes, kernel_size=1, bias=True)  # TODO: Enable for the next experiment 
 
-        d['cnn1'] = nn.Conv2d(in_channels + 2, 256, 3, 1, 1, bias=False)
-        d['bn1'] = nn.BatchNorm2d(256)
-        d['relu1'] = nn.ReLU(inplace=True)
+    def forward(self, f_mask, f_edge, f_vertex):
 
-        d['cnn2'] = nn.Conv2d(256, 256, 3, 1, 1, bias=False)
-        d['bn2'] = nn.BatchNorm2d(256)
-        d['relu2'] = nn.ReLU(inplace=True)
+        mask_trans = self.mask_trans(f_mask)
 
-        super().__init__(d)
+        concat = torch.cat((mask_trans, f_edge, f_vertex), dim=1)
+        f0 = self.fuse0(concat)
+        f1 = self.fuse1(f0)
+        f2 = self.fuse2(f1)
+        f3 = self.fuse3(f2)
+        # mask = self.mask(f3)
+
+        return f3
+    
+
+class SimpleBottleneck(nn.Module):
+    """Similar structure to the bottleneck layer of ResNet but with fixed #channels. """
+    def __init__(self, planes):
+        super(SimpleBottleneck, self).__init__()
+        self.conv1 = nn.Conv2d(planes, planes, 1, 1, bias=False)
+        self.bn1 = nn.BatchNorm2d(planes)
+        self.conv2 = nn.Conv2d(planes, planes, 3, 1, 1, bias=False)
+        self.bn2 = nn.BatchNorm2d(planes)
+        self.conv3 = nn.Conv2d(planes, planes, 1, 1, bias=False)
+        self.bn3 = nn.BatchNorm2d(planes)
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        residual = x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu(out)
+        out = self.conv3(out)
+        out = self.bn3(out)
+        out += residual
+        out = self.relu(out)
+        return out
 
 
 class ResBackbone(nn.Module):
