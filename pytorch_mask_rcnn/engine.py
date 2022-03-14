@@ -142,7 +142,7 @@ def generate_results(model, data_loader, device, args, poly=False):
 
         S = time.time()
         #torch.cuda.synchronize()
-        output = model(image)
+        output = model(image, target)
         m_m.update(time.time() - S)
 
         prediction = {target["image_id"].item(): {k: v.cpu() for k, v in output.items()}}

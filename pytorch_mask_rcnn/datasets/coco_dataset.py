@@ -40,6 +40,30 @@ class COCODataset(GeneralizedDataset):
             image = image.convert("RGB")
         return image
 
+    def imgradient(self, mask):
+        """ Equivalent to 'imgradient' in MATLAB with mode='sobel'
+        Reference: https://stackoverflow.com/a/47835313
+        """
+        sobelx = cv2.Sobel(mask, cv2.CV_64F, 1, 0)
+        sobely = cv2.Sobel(mask, cv2.CV_64F, 0, 1)
+        magnitude = np.sqrt(sobelx**2.0 + sobely**2.0)
+        angle = np.arctan2(sobely, sobelx) * (180 / np.pi)
+        return magnitude, angle
+
+    def get_gradient(self, img_id):
+        img = np.array(self.get_image(img_id))
+        # Apply sobel filter to compute image gradient
+        img_r = img[:, :, 0]
+        img_g = img[:, :, 1]
+        img_b = img[:, :, 2]
+        grad_r = self.imgradient(img_r)[0]
+        grad_g = self.imgradient(img_g)[0]
+        grad_b = self.imgradient(img_b)[0]
+        img_grad = np.sqrt(grad_r**2 + grad_g**2 + grad_b**2)
+        # Normalize to [0,1]
+        img_grad = (img_grad - img_grad.min()) / (img_grad.max() - img_grad.min())
+        return img_grad
+
     @staticmethod
     def convert_to_xyxy(box):  # box format: (xmin, ymin, w, h)
         x, y, w, h = box.T
@@ -219,6 +243,7 @@ class COCODataset(GeneralizedDataset):
     
     def get_target(self, img_id):
         img_id = int(img_id)
+        imgrad = self.get_gradient(img_id) 
         ann_ids = self.coco.getAnnIds(img_id)
         anns = self.coco.loadAnns(ann_ids)
         boxes = []
@@ -266,9 +291,11 @@ class COCODataset(GeneralizedDataset):
             edge_masks = torch.stack(edge_masks)
             vertex_masks = torch.stack(vertex_masks)
             polygons = torch.tensor(np.array(polygons), dtype=torch.float32)
+            # global_polygons = torch.tensor(global_polygons, dtype=torch.float32)
+            imgrad = torch.from_numpy(imgrad)
 
         target = dict(image_id=torch.tensor([img_id]), boxes=boxes, labels=labels,
                       masks=masks, edges=edge_masks, vertices=vertex_masks,
-                      polygons=polygons, global_polygons=global_polygons)
+                      polygons=polygons, global_polygons=global_polygons, imgrad=imgrad)
 
         return target

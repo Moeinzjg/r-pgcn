@@ -253,8 +253,9 @@ class RoIHeads(nn.Module):
             edge_logit, vertex_logit, features_edge, features_vertex = self.feature_augmentor(augmentation_feature)
 
             # Feature augmentation
-            # enhanced_feature = torch.cat([features_mask, features_edge, features_vertex], 1)
-            poly_feature = self.poly_augmentor(features_mask, features_edge, features_vertex)
+            imgrad = target['imgrad'][:, None].to(mask_proposal)
+            features_grad = self.poly_roi_pool(imgrad, mask_proposal, image_shape)
+            poly_feature = self.poly_augmentor(features_mask, features_edge, features_vertex, features_grad)
 
             # GCN
             # create circle polygon data
