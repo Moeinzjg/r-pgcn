@@ -131,6 +131,7 @@ class MaskRCNN(nn.Module):
 
         self.head.mask_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=2)
         self.head.augmentation_roi_pool = MultiScaleRoIAlign(featmap_names=["0"], output_size=28, sampling_ratio=2)
+        self.head.poly_roi_pool = RoIAlign(output_size=(28, 28), sampling_ratio=2)
 
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, num_classes)
         self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256, internal=2)
@@ -296,27 +297,6 @@ class FeatureAugmentor(nn.Module):
 
         return edge_logits, vertex_logits, features_edge, features_vertex
 
-
-# class PolyAugmentor(nn.Sequential):
-#     def __init__(self, in_channels):
-#         """
-#         Equivalent to Edge Annotation in Kang's
-#         Arguments:
-#             in_channels (int)
-#         """
-
-#         d = OrderedDict()
-
-#         d['cnn1'] = nn.Conv2d(in_channels, 256, 3, 1, 1, bias=False)
-#         d['bn1'] = nn.BatchNorm2d(256)
-#         d['relu1'] = nn.ReLU(inplace=True)
-
-#         d['cnn2'] = nn.Conv2d(256, 256, 3, 1, 1, bias=False)
-#         d['bn2'] = nn.BatchNorm2d(256)
-#         d['relu2'] = nn.ReLU(inplace=True)
-
-#         super().__init__(d)
-
 class PolyAugmentor(nn.Module):
     def __init__(self):
         super(PolyAugmentor, self).__init__()
@@ -329,7 +309,7 @@ class PolyAugmentor(nn.Module):
         self.mask_trans = nn.Sequential(nn.Conv2d(256, 48, 1, 1, bias=False),
                                         nn.BatchNorm2d(48),
                                         nn.ReLU(inplace=True))
-        self.fuse0 = nn.Sequential(nn.Conv2d(48+2+2, 16, 1, 1, bias=False),
+        self.fuse0 = nn.Sequential(nn.Conv2d(48+2+2+1, 16, 1, 1, bias=False),
                                    nn.BatchNorm2d(16),
                                    nn.ReLU(inplace=True))
         self.fuse1 = SimpleBottleneck(16)
@@ -337,11 +317,11 @@ class PolyAugmentor(nn.Module):
         self.fuse3 = SimpleBottleneck(16)
         # self.mask = nn.Conv2d(16, n_classes, kernel_size=1, bias=True)  # TODO: Enable for the next experiment 
 
-    def forward(self, f_mask, f_edge, f_vertex):
+    def forward(self, f_mask, f_edge, f_vertex, f_grad):
 
         mask_trans = self.mask_trans(f_mask)
 
-        concat = torch.cat((mask_trans, f_edge, f_vertex), dim=1)
+        concat = torch.cat((mask_trans, f_edge, f_vertex, f_grad), dim=1)
         f0 = self.fuse0(concat)
         f1 = self.fuse1(f0)
         f2 = self.fuse2(f1)

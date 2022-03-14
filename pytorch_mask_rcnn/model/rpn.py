@@ -76,7 +76,7 @@ class RegionProposalNetwork(nn.Module):
         return objectness_loss, box_loss
         
     def forward(self, feature, image_shape, target=None):
-        if target is not None:
+        if (target is not None) and ('boxes' in target):
             gt_box = target['boxes']
         anchor = self.anchor_generator(feature, image_shape)
         

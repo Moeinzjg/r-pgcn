@@ -39,10 +39,16 @@ class Transformer:
         if target is None:
             return image, target
 
-        box = target['boxes']
-        box[:, [0, 2]] = box[:, [0, 2]] * image.shape[-1] / ori_image_shape[1]
-        box[:, [1, 3]] = box[:, [1, 3]] * image.shape[-2] / ori_image_shape[0]
-        target['boxes'] = box
+        if 'boxes' in target:
+            box = target['boxes']
+            box[:, [0, 2]] = box[:, [0, 2]] * image.shape[-1] / ori_image_shape[1]
+            box[:, [1, 3]] = box[:, [1, 3]] * image.shape[-2] / ori_image_shape[0]
+            target['boxes'] = box
+
+        if 'imgrad' in target:
+            imgrad = target['imgrad']
+            imgrad = imgrad.unsqueeze(0)
+            target['imgrad'] = F.interpolate(imgrad[None], size=size, mode='bilinear', align_corners=False)[0]
 
         if 'masks' in target:
             mask = target['masks']

@@ -49,9 +49,10 @@ def main(args):
         target.pop('global_polygons')
         target = {k: v.to(device) for k, v in target.items()}
         target['global_polygons'] = global_poly
+        imgrad = {'imgrad': target['imgrad'][0]}
 
         with torch.no_grad():
-            result = model(image)
+            result = model(image, imgrad)
         pmr.show(image, result, target, ds.classes, "./maskrcnn_results/images/output{}".format(i))
 
         if i >= num_images - 1:
