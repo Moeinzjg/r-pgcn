@@ -250,12 +250,13 @@ class RoIHeads(nn.Module):
             
 
             augmentation_feature = self.augmentation_roi_pool(feature, [mask_proposal], [(w, h)])
-            edge_logit, vertex_logit, features_edge, features_vertex = self.feature_augmentor(augmentation_feature)
-
-            # Feature augmentation
             imgrad = target['imgrad'][:, None].to(mask_proposal)
             features_grad = self.poly_roi_pool(imgrad, mask_proposal, image_shape)
-            poly_feature = self.poly_augmentor(features_mask, features_edge, features_vertex, features_grad)
+            hr_feature = torch.cat((augmentation_feature, features_grad), dim=1)
+            edge_logit, vertex_logit, features_edge, features_vertex = self.feature_augmentor(hr_feature)
+
+            # Feature augmentation
+            poly_feature, hr_mask_logit = self.poly_augmentor(features_mask, features_edge, features_vertex, features_grad)
 
             # GCN
             # create circle polygon data
@@ -271,16 +272,18 @@ class RoIHeads(nn.Module):
                 gt_polygon = target['polygons']
 
                 mask_loss = maskrcnn_loss(mask_logit, mask_proposal, pos_matched_idx, mask_label, gt_mask)
+                hr_mask_loss = maskrcnn_loss(hr_mask_logit, mask_proposal, pos_matched_idx, mask_label, gt_mask)
                 edge_loss = edgercnn_loss(edge_logit, mask_proposal, pos_matched_idx, mask_label, gt_edge)
                 vertex_loss = vertexrcnn_loss(vertex_logit, mask_proposal, pos_matched_idx, mask_label, gt_vertex)
                 _, polygon_loss = poly_matching_loss(self.num_points, pred_polygon, gt_polygon, pos_matched_idx, loss_type="L1")
-                losses.update(dict(roi_mask_loss=mask_loss, roi_edge_loss=edge_loss,
+                losses.update(dict(roi_mask_loss=mask_loss, roi_hr_mask_loss=hr_mask_loss, roi_edge_loss=edge_loss,
                                    roi_vertex_loss=vertex_loss, roi_polygon_loss=polygon_loss))
             else:
                 label = result['labels']
                 idx = torch.arange(label.shape[0], device=label.device)
 
-                mask_logit = mask_logit[idx, label]
+                # mask_logit = mask_logit[idx, label]
+                mask_logit = hr_mask_logit[idx, label]
                 edge_logit = edge_logit[idx, 0]
                 vertex_logit = vertex_logit[idx, 0]
 
