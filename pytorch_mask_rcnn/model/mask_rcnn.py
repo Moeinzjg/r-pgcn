@@ -134,8 +134,8 @@ class MaskRCNN(nn.Module):
         self.head.poly_roi_pool = RoIAlign(output_size=(28, 28), sampling_ratio=2)
 
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, num_classes)
-        self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256, internal=2)
-        self.head.poly_augmentor = PolyAugmentor()
+        self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256+1, internal=2)
+        self.head.poly_augmentor = PolyAugmentor(n_classes=2)
         self.head.polygon_predictor = PolyGNN(16, feature_grid_size=28)
 
         # ------------ Transformer --------------------------
@@ -298,7 +298,7 @@ class FeatureAugmentor(nn.Module):
         return edge_logits, vertex_logits, features_edge, features_vertex
 
 class PolyAugmentor(nn.Module):
-    def __init__(self):
+    def __init__(self, n_classes=2):
         super(PolyAugmentor, self).__init__()
         """
         Based on TOS-Net
@@ -315,7 +315,7 @@ class PolyAugmentor(nn.Module):
         self.fuse1 = SimpleBottleneck(16)
         self.fuse2 = SimpleBottleneck(16)
         self.fuse3 = SimpleBottleneck(16)
-        # self.mask = nn.Conv2d(16, n_classes, kernel_size=1, bias=True)  # TODO: Enable for the next experiment 
+        self.mask = nn.Conv2d(16, n_classes, kernel_size=1, bias=True)
 
     def forward(self, f_mask, f_edge, f_vertex, f_grad):
 
@@ -326,9 +326,9 @@ class PolyAugmentor(nn.Module):
         f1 = self.fuse1(f0)
         f2 = self.fuse2(f1)
         f3 = self.fuse3(f2)
-        # mask = self.mask(f3)
+        mask = self.mask(f3)
 
-        return f3
+        return f3, mask
     
 
 class SimpleBottleneck(nn.Module):
