@@ -257,7 +257,7 @@ class RoIHeads(nn.Module):
 
             # Feature augmentation
             poly_feature, hr_mask_logit = self.poly_augmentor(features_mask, features_edge, features_vertex, features_grad)
-
+            poly_feature = torch.cat((poly_feature, hr_mask_logit), dim=1)
             # GCN
             # create circle polygon data
             init_polys = get_initial_points(self.num_points)
