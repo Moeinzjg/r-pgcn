@@ -136,7 +136,7 @@ class MaskRCNN(nn.Module):
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, num_classes)
         self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256+1, internal=2)
         self.head.poly_augmentor = PolyAugmentor(n_classes=2)
-        self.head.polygon_predictor = PolyGNN(16, feature_grid_size=28)
+        self.head.polygon_predictor = PolyGNN(16 + 2, feature_grid_size=28)
 
         # ------------ Transformer --------------------------
         self.transformer = Transformer(
