@@ -57,7 +57,7 @@ def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, arg
             # log into tensorboard
             for k in losses.keys():
                 writer.add_scalar(k, losses[k], num_iters)
-            writer.add_scalar('total_loss', total_loss, num_iters)
+            writer.add_scalar('total_loss', total_loss.detach().item(), num_iters)
 
         t_m.update(time.time() - T)
         if i >= iters - 1:
