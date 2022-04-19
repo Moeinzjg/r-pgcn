@@ -134,9 +134,9 @@ class MaskRCNN(nn.Module):
         self.head.poly_roi_pool = RoIAlign(output_size=(28, 28), sampling_ratio=2)
 
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, num_classes)
-        self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256+1, internal=2)
+        self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256+1, internal=128)
         self.head.poly_augmentor = PolyAugmentor(n_classes=2)
-        self.head.polygon_predictor = PolyGNN(16 + 2, feature_grid_size=28)
+        self.head.polygon_predictor = PolyGNN(48 + 2, feature_grid_size=28)
 
         # ------------ Transformer --------------------------
         self.transformer = Transformer(
@@ -262,15 +262,45 @@ class FeatureAugmentor(nn.Module):
         super(FeatureAugmentor, self).__init__()
         self.grid_size = feats_dim
 
-        self.edge_conv = nn.Conv2d(in_channels=feats_channels,
-                                   out_channels=internal,
-                                   kernel_size=3,
-                                   padding=1)
+        self.edge_conv1 = nn.Conv2d(in_channels=feats_channels,
+                                    out_channels=internal,
+                                    kernel_size=3,
+                                    padding=1)
+
+        self.edge_conv2 = nn.Conv2d(in_channels=internal,
+                                    out_channels=internal,
+                                    kernel_size=3,
+                                    padding=1)
+
+        self.edge_conv3 = nn.Conv2d(in_channels=internal,
+                                    out_channels=internal,
+                                    kernel_size=3,
+                                    padding=1)
+        
+        self.edge_conv4 = nn.Conv2d(in_channels=internal,
+                                    out_channels=internal,
+                                    kernel_size=3,
+                                    padding=1)
 
         self.edge_fc = nn.Linear(in_features=feats_dim**2 * internal,
                                  out_features=feats_dim**2)
 
-        self.vertex_conv = nn.Conv2d(in_channels=feats_channels,
+        self.vertex_conv1 = nn.Conv2d(in_channels=feats_channels,
+                                     out_channels=internal,
+                                     kernel_size=3,
+                                     padding=1)
+        
+        self.vertex_conv2 = nn.Conv2d(in_channels=internal,
+                                     out_channels=internal,
+                                     kernel_size=3,
+                                     padding=1)
+        
+        self.vertex_conv3 = nn.Conv2d(in_channels=internal,
+                                     out_channels=internal,
+                                     kernel_size=3,
+                                     padding=1)
+        
+        self.vertex_conv4 = nn.Conv2d(in_channels=internal,
                                      out_channels=internal,
                                      kernel_size=3,
                                      padding=1)
@@ -284,12 +314,18 @@ class FeatureAugmentor(nn.Module):
         else, use temperature
         """
         batch_size = feats.size(0)
-        conv_edge = self.edge_conv(feats)
-        features_edge = F.relu(conv_edge, inplace=True)
+        conv_edge1 = F.relu(self.edge_conv1(feats), inplace=True)
+        conv_edge2 = F.relu(self.edge_conv2(conv_edge1), inplace=True)
+        conv_edge3 = F.relu(self.edge_conv3(conv_edge2), inplace=True)
+        features_edge = F.relu(self.edge_conv4(conv_edge3), inplace=True)
+
         edge_logits = self.edge_fc(features_edge.view(batch_size, -1))
 
-        conv_vertex = self.vertex_conv(feats)
-        features_vertex = F.relu(conv_vertex)
+        conv_vertex1 = F.relu(self.vertex_conv1(feats), inplace=True)
+        conv_vertex2 = F.relu(self.vertex_conv2(conv_vertex1), inplace=True)
+        conv_vertex3 = F.relu(self.vertex_conv3(conv_vertex2), inplace=True)
+        features_vertex = F.relu(self.vertex_conv4(conv_vertex3), inplace=True)
+
         vertex_logits = self.vertex_fc(features_vertex.view(batch_size, -1))
 
         edge_logits = edge_logits.view((-1, self.grid_size, self.grid_size)).unsqueeze(1)
@@ -309,19 +345,28 @@ class PolyAugmentor(nn.Module):
         self.mask_trans = nn.Sequential(nn.Conv2d(256, 48, 1, 1, bias=False),
                                         nn.BatchNorm2d(48),
                                         nn.ReLU(inplace=True))
-        self.fuse0 = nn.Sequential(nn.Conv2d(48+2+2+1, 16, 1, 1, bias=False),
-                                   nn.BatchNorm2d(16),
+        self.edge_trans = nn.Sequential(nn.Conv2d(128, 48, 1, 1, bias=False),
+                                        nn.BatchNorm2d(48),
+                                        nn.ReLU(inplace=True))
+        self.vertex_trans = nn.Sequential(nn.Conv2d(128, 48, 1, 1, bias=False),
+                                        nn.BatchNorm2d(48),
+                                        nn.ReLU(inplace=True))
+
+        self.fuse0 = nn.Sequential(nn.Conv2d(48+48+48+1, 48, 1, 1, bias=False),
+                                   nn.BatchNorm2d(48),
                                    nn.ReLU(inplace=True))
-        self.fuse1 = SimpleBottleneck(16)
-        self.fuse2 = SimpleBottleneck(16)
-        self.fuse3 = SimpleBottleneck(16)
-        self.mask = nn.Conv2d(16, n_classes, kernel_size=1, bias=True)
+        self.fuse1 = SimpleBottleneck(48)
+        self.fuse2 = SimpleBottleneck(48)
+        self.fuse3 = SimpleBottleneck(48)
+        self.mask = nn.Conv2d(48, n_classes, kernel_size=1, bias=True)
 
     def forward(self, f_mask, f_edge, f_vertex, f_grad):
 
         mask_trans = self.mask_trans(f_mask)
+        edge_trans = self.edge_trans(f_edge)
+        vertex_trans = self.vertex_trans(f_vertex)
 
-        concat = torch.cat((mask_trans, f_edge, f_vertex, f_grad), dim=1)
+        concat = torch.cat((mask_trans, edge_trans, vertex_trans, f_grad), dim=1)
         f0 = self.fuse0(concat)
         f1 = self.fuse1(f0)
         f2 = self.fuse2(f1)
