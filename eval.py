@@ -15,7 +15,6 @@ def main(args):
         pmr.get_gpu_prop(show=True)
     print("\ndevice: {}".format(device))
 
-#     d_test = pmr.datasets(args.dataset, args.data_dir, "val", train=True)  # VOC 2012. set train=True for eval
     d_test = pmr.datasets(args.dataset, args.data_dir, "test", train=True)  # COCO 2017
 
     print(args)

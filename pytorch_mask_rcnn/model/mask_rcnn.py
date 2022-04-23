@@ -145,8 +145,6 @@ class MaskRCNN(nn.Module):
             image_mean=[0.485, 0.456, 0.406],  # Spacenet Vegas mean: [0.339, 0.327, 0.329]
             image_std=[0.229, 0.224, 0.225])   # Spacenet Vegas std:  [0.255, 0.246, 0.242]
 
-        # TODO: transformer changes mask too! so, include edge&vertex too.
-
     def forward(self, image, target=None):
         ori_image_shape = image.shape[-2:]
 

@@ -80,7 +80,6 @@ class COCODataset(GeneralizedDataset):
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
         poly_temp = poly_temp.reshape((-1, 1, 2))
         poly_temp = np.floor(poly_temp).astype(np.int32)
-        # poly_temp = cv2.approxPolyDP(poly_temp, 0, False)[:, 0, :]
         cv2.polylines(edge_mask, [poly_temp], True, [1])
         return edge_mask
 
@@ -93,7 +92,6 @@ class COCODataset(GeneralizedDataset):
         poly_temp[:, 0] = np.clip(poly_temp[:, 0], 0 + EPS, shape[0] - EPS)
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
         poly_temp = np.floor(poly_temp).astype(np.int32)
-        # poly_temp = cv2.approxPolyDP(poly_temp, 0, False)[:, 0, :]
         vertex_mask[poly_temp[:, 1], poly_temp[:, 0]] = 1.0
         return vertex_mask
 
@@ -112,30 +110,8 @@ class COCODataset(GeneralizedDataset):
         # convert coordinates from global to local i.e. [0, 1]
         x_min, y_min, w, h = bbox
 
-        # x_max = x_min + w
-        # y_max = y_min + h
-
-        # x_min = max(0, x_min)
-        # x_max = min(shape[1] - 1, x_max)
-
-        # y_center = y_min + (1 + h) / 2.  # Bounding box finishing Layer
-
-        # patch_w = x_max - x_min
-        # # NOTE: Different from before
-
-        # y_min = int(np.floor(y_center - patch_w / 2.))
-        # y_max = y_min + patch_w
-
-        # top_margin = max(0, y_min) - y_min
-
-        # y_min = max(0, y_min)
-        # y_max = min(shape[0] - 1, y_max)
-
         xs = arr_polygon[:, 0]
         ys = arr_polygon[:, 1]
-
-        # xs = (xs - x_min) / float(patch_w)
-        # ys = (ys - (y_min - top_margin)) / float(patch_w)
 
         xs = (xs - x_min) / float(w)
         ys = (ys - y_min) / float(h)
@@ -210,9 +186,6 @@ class COCODataset(GeneralizedDataset):
                     edgenum[edgeid] += newpnum - edgenumsum
             
             assert np.sum(edgenum) == newpnum
-            # if np.sum(edgenum) != newpnum:
-            #     print('edgenum: {}, newpnum: {}'.format(np.sum(edgenum), newpnum))
-            #     import pdb; pdb.set_trace()  # the problem is that all the points in pgtnp_px2 are the same point!!!
 
             psample = []
             for i in range(pnum):
@@ -293,7 +266,6 @@ class COCODataset(GeneralizedDataset):
             edge_masks = torch.stack(edge_masks)
             vertex_masks = torch.stack(vertex_masks)
             polygons = torch.tensor(np.array(polygons), dtype=torch.float32)
-            # global_polygons = torch.tensor(global_polygons, dtype=torch.float32)
 
         target = dict(image_id=torch.tensor([img_id]), boxes=boxes, labels=labels,
                       masks=masks, edges=edge_masks, vertices=vertex_masks,
