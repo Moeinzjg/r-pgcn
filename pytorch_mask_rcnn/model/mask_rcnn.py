@@ -142,8 +142,8 @@ class MaskRCNN(nn.Module):
         # ------------ Transformer --------------------------
         self.transformer = Transformer(
             min_size=800, max_size=1333,
-            image_mean=[0.339, 0.327, 0.329],  # ImageNet: image_mean=[0.485, 0.456, 0.406],
-            image_std=[0.255, 0.246, 0.242])   # ImageNet: image_std=[0.229, 0.224, 0.225]
+            image_mean=[0.485, 0.456, 0.406],  # Spacenet Vegas mean: [0.339, 0.327, 0.329]
+            image_std=[0.229, 0.224, 0.225])   # Spacenet Vegas std:  [0.255, 0.246, 0.242]
 
         # TODO: transformer changes mask too! so, include edge&vertex too.
 
