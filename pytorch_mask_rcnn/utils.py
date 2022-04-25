@@ -1,8 +1,13 @@
+from __future__ import division
 import os
 import re
 import torch
 import cv2
 import numpy as np
+import scipy.optimize
+import shapely
+
+from lydorn_utils import polygon_utils
 
 
 __all__ = ["save_ckpt", "Meter"]
@@ -209,3 +214,133 @@ def draw_poly12(mask, poly, fill_value=255):
     cv2.fillPoly(mask, [poly], fill_value)
 
     return mask
+
+
+#TODO: standardize the thresholds and evaluate on the same detections
+
+def bbox_iou(boxA, boxB):
+  # https://www.pyimagesearch.com/2016/11/07/intersection-over-union-iou-for-object-detection/
+  # ^^ corrected.
+    
+  # Determine the (x, y)-coordinates of the intersection rectangle
+  xA = max(boxA[0], boxB[0])
+  yA = max(boxA[1], boxB[1])
+  xB = min(boxA[2], boxB[2])
+  yB = min(boxA[3], boxB[3])
+
+  interW = xB - xA + 1
+  interH = yB - yA + 1
+
+  # Correction: reject non-overlapping boxes
+  if interW <=0 or interH <=0 :
+    return -1.0
+
+  interArea = interW * interH
+  boxAArea = (boxA[2] - boxA[0] + 1) * (boxA[3] - boxA[1] + 1)
+  boxBArea = (boxB[2] - boxB[0] + 1) * (boxB[3] - boxB[1] + 1)
+  iou = interArea / float(boxAArea + boxBArea - interArea)
+  return iou
+
+
+def match_bboxes(bbox_gt, bbox_pred, IOU_THRESH=0.5):
+    '''
+    Given sets of true and predicted bounding-boxes,
+    determine the best possible match.
+    Parameters
+    ----------
+    bbox_gt, bbox_pred : N1x4 and N2x4 np array of bboxes [x1,y1,x2,y2]. 
+      The number of bboxes, N1 and N2, need not be the same.
+    
+    Returns
+    -------
+    (idxs_true, idxs_pred, ious, labels)
+        idxs_true, idxs_pred : indices into gt and pred for matches
+        ious : corresponding IOU value of each match
+        labels: vector of 0/1 values for the list of detections
+    '''
+    n_true = bbox_gt.shape[0]
+    n_pred = bbox_pred.shape[0]
+    MAX_DIST = 1.0
+    MIN_IOU = 0.0
+
+    # NUM_GT x NUM_PRED
+    iou_matrix = np.zeros((n_true, n_pred))
+    for i in range(n_true):
+        for j in range(n_pred):
+            iou_matrix[i, j] = bbox_iou(bbox_gt[i,:], bbox_pred[j,:])
+
+    if n_pred > n_true:
+      # there are more predictions than ground-truth - add dummy rows
+      diff = n_pred - n_true
+      iou_matrix = np.concatenate( (iou_matrix, 
+                                    np.full((diff, n_pred), MIN_IOU)), 
+                                  axis=0)
+
+    if n_true > n_pred:
+      # more ground-truth than predictions - add dummy columns
+      diff = n_true - n_pred
+      iou_matrix = np.concatenate( (iou_matrix, 
+                                    np.full((n_true, diff), MIN_IOU)), 
+                                  axis=1)
+
+    # call the Hungarian matching
+    idxs_true, idxs_pred = scipy.optimize.linear_sum_assignment(1 - iou_matrix)
+
+    if (not idxs_true.size) or (not idxs_pred.size):
+        ious = np.array([])
+    else:
+        ious = iou_matrix[idxs_true, idxs_pred]
+
+    # remove dummy assignments
+    sel_pred = idxs_pred<n_pred
+    idx_pred_actual = idxs_pred[sel_pred] 
+    idx_gt_actual = idxs_true[sel_pred]
+    ious_actual = iou_matrix[idx_gt_actual, idx_pred_actual]
+    sel_valid = (ious_actual > IOU_THRESH)
+    label = sel_valid.astype(int)
+    idx_gt = idx_gt_actual[sel_valid]
+    idx_pred = idx_pred_actual[sel_valid]
+    bbox_gt = bbox_gt[idx_gt]
+
+    area = [(bbox_gt[i, 2] - bbox_gt[i, 0] + 1) * (bbox_gt[i, 3] - bbox_gt[i, 1] + 1) for i in range(bbox_gt.shape[0])]
+    slope = [(bbox_gt[i, 3] - bbox_gt[i, 1] + 1) / (bbox_gt[i, 2] - bbox_gt[i, 0] + 1) for i in range(bbox_gt.shape[0])]
+    
+    return idx_gt, idx_pred, ious_actual[sel_valid], label, area, slope
+
+
+def compute_contour_metrics(poly_gt, poly_pred):
+    gt_polygons = [shapely.geometry.Polygon(np.array(poly)) for poly in poly_gt]
+    dt_polygons = [shapely.geometry.Polygon(np.array(poly)) for poly in poly_pred]
+    try:
+        fixed_gt_polygons = polygon_utils.fix_polygons(gt_polygons, buffer=0.0001)  # Buffer adds vertices but is needed to repair some geometries
+        fixed_dt_polygons = polygon_utils.fix_polygons(dt_polygons)  # TODO: fix this problem
+    except:
+        return []
+    max_angle_diffs = polygon_utils.compute_polygon_contour_measures(fixed_dt_polygons, fixed_gt_polygons, sampling_spacing=2.0, min_precision=0.5, max_stretch=2)
+    return max_angle_diffs
+
+
+def maxtan_from_poly(pred, gt):
+    """
+    Compute Max tangent from poly. The polygons should
+    already be in the final output size
+
+    pred: list of np arrays of predictions
+    gt: list of np arrays of gt
+    grid_size: grid_size that the polygons are in
+
+    """
+    bbox_gt = gt['boxes'].detach().cpu().numpy()
+    bbox_pred = pred['boxes'].detach().cpu().numpy()  # TODO: filter out boxes with low score
+    gt_idx, pred_idx, ious, label, area, slope = match_bboxes(bbox_gt, bbox_pred, IOU_THRESH=0.5)
+
+    poly_gt = [gt['global_polygons'][i] for i in gt_idx]
+    poly_pred = pred['polygons'].detach().cpu().numpy()
+    poly_pred = [poly_pred[j] for j in pred_idx]
+    max_angle_diffs = compute_contour_metrics(poly_gt, poly_pred)
+    poly_nvertex = [poly.shape[0] for poly in poly_gt]
+    if len(max_angle_diffs) == 0:  # TODO: fix this
+        area = []
+        slope = []
+        poly_nvertex = []
+    return max_angle_diffs, area, slope, poly_nvertex

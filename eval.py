@@ -2,6 +2,7 @@ import argparse
 import os
 import time
 import re
+import math
 
 import torch
 
@@ -38,7 +39,7 @@ def main(args):
     print("\nevaluating...\n")
 
     B = time.time()
-    eval_output, rpolygcn_eval_output, iter_eval, poly_iou = pmr.evaluate(model, d_test, device, args)
+    eval_output, rpolygcn_eval_output, iter_eval, poly_iou, poly_maxtan = pmr.evaluate(model, d_test, device, args)
     B = time.time() - B
     for bf in eval_output.buffer:
         print(bf)
@@ -51,6 +52,8 @@ def main(args):
         print("\nTotal time of this evaluation: {:.1f} s, speed: {:.1f} imgs/s".format(B, 1 / iter_eval))
     if poly_iou is not None:
         print("\n Average IOU of polygons is: {:.2f}".format(sum(poly_iou) / len(poly_iou)))
+    if poly_maxtan is not None:
+        print("\n Average MaxTangent of polygons is: {:.2f}".format(sum(poly_maxtan) / len(poly_maxtan) * 180/math.pi))
 
 
 if __name__ == "__main__":

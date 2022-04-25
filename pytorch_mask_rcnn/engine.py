@@ -1,13 +1,11 @@
+import os
 import sys
 import time
 
 import torch
 
-from .utils import Meter, TextArea, iou_from_poly, mask_from_poly
-try:
-    from .datasets import CocoEvaluator, prepare_for_coco, prepare_for_coco_polygon
-except:
-    pass
+from .utils import Meter, TextArea, iou_from_poly, mask_from_poly, maxtan_from_poly
+from .datasets import CocoEvaluator, prepare_for_coco, prepare_for_coco_polygon
 
 
 def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, args, writer):
@@ -73,13 +71,14 @@ def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, arg
 def evaluate(model, data_loader, device, args, generate=True, poly=False):
     iter_eval = None
     poly_iou = None
+    poly_maxtan = None
     if generate:
-        iter_eval, poly_iou = generate_results(model, data_loader, device, args, poly=True)
+        iter_eval, poly_iou, poly_maxtan, _, _ = generate_results(model, data_loader, device, args, poly=True)
 
     dataset = data_loader
     iou_types = ["bbox", "segm"]
     coco_evaluator = CocoEvaluator(dataset.coco, iou_types)
-    coco_evaluator_rpolygcn = CocoEvaluator(dataset.coco, iou_types)
+    coco_evaluator_rpolygcn = CocoEvaluator(dataset.coco, ["segm"])
 
     results = torch.load(args.results, map_location="cpu")
     rpolygcn_results = torch.load(args.rpolygcn_results, map_location="cpu")
@@ -87,6 +86,7 @@ def evaluate(model, data_loader, device, args, generate=True, poly=False):
     S = time.time()
     coco_evaluator.accumulate(results)
     coco_evaluator_rpolygcn.accumulate(rpolygcn_results)
+    # coco_evaluator_rpolygcn.polygonal_metrics(rpolygcn_results)
 
     print("accumulate: {:.1f}s".format(time.time() - S))
 
@@ -107,7 +107,7 @@ def evaluate(model, data_loader, device, args, generate=True, poly=False):
     output_rpolygcn = sys.stdout
     sys.stdout = temp
 
-    return output, output_rpolygcn, iter_eval, poly_iou
+    return output, output_rpolygcn, iter_eval, poly_iou, poly_maxtan
 
 
 # generate results file
@@ -121,8 +121,17 @@ def generate_results(model, data_loader, device, args, poly=False):
     coco_results_poly = []
     if poly:
         poly_iou = []
+        poly_maxtan = []
+        poly_area = []
+        poly_slope = []
+        poly_nvertex = []
     else:
         poly_iou = None
+        poly_maxtan = None
+        poly_area = None
+        poly_slope = None
+        poly_nvertex = None
+
     model.eval()
     A = time.time()
     for i, (image, target) in enumerate(data_loader):
@@ -148,10 +157,15 @@ def generate_results(model, data_loader, device, args, poly=False):
 
         # evaluation on polygons
         if poly:
-            pred = output['polygons']
-            gt = target['global_polygons']
-            iou, _ = iou_from_poly(pred, gt, image.shape[2], image.shape[1])
+            pred = output
+            gt = target
+            iou, _ = iou_from_poly(pred['polygons'], gt['global_polygons'], image.shape[2], image.shape[1])
+            maxtan, area, slope, nvertex = maxtan_from_poly(pred, gt)
             poly_iou.append(iou)
+            poly_maxtan.extend(maxtan)
+            poly_area.extend(area)
+            poly_slope.extend(slope)
+            poly_nvertex.extend(nvertex)
 
         t_m.update(time.time() - T)
         if i >= iters - 1:
@@ -162,6 +176,10 @@ def generate_results(model, data_loader, device, args, poly=False):
     torch.save(coco_results, args.results)
     if poly:
         torch.save(coco_results_poly, args.rpolygcn_results)
+        with open(os.path.join(os.path.dirname(args.ckpt_path), 'poly_metrics.txt'), 'w') as f:
+            f.write('maxtan  area  slope  #vertex\n')
+            for l in range(len(poly_maxtan)):
+                f.write('%(aa)02f  %(bb)02f  %(cc)02f %(dd)d\n'%{'aa': poly_maxtan[l], 'bb': poly_area[l], 'cc': poly_slope[l], 'dd': poly_nvertex[l]})
 
-    return A / iters, poly_iou
+    return A / iters, poly_iou, poly_maxtan, poly_area, poly_slope
 
