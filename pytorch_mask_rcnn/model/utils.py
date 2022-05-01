@@ -193,3 +193,33 @@ def get_initial_points(cp_num):
     arr_fwd_poly = np.ones((cp_num, 2), np.float32) * 0.
     arr_fwd_poly[:, :] = fwd_poly
     return arr_fwd_poly
+
+
+def polis_metric(poly1, poly2):
+    p1 = 0
+    p2 = 0
+    for j in range(poly1.shape[0]):
+        p1 += min_dist_point2poly(poly1[j, :], poly2)
+    for k in range(poly2.shape[0]):
+        p2 += min_dist_point2poly(poly2[k, :], poly1)
+    
+    return (p1 / (2 * poly1.shape[0]) + p2 / (2 * poly2.shape[0])) / 2
+
+
+def min_dist_point2poly(point, poly):
+    '''
+    AX+BY+C=0
+    A = y1 - y2
+    B = x2 - x1
+    C = x1y2 - x2y1
+    '''
+    dis = torch.ones((poly.shape[0]), 1) * 100
+    for i in range(poly.shape[0] - 1):
+        x1, y1 = poly[i]
+        x2, y2 = poly[i+1]
+        A = y1 - y2
+        B = x2 - x1
+        C = x1 * y2 - x2 * y1
+        if torch.sqrt(A*A + B*B) > 0:
+            dis[i] = torch.abs(A * point[0] + B * point[1] + C)/torch.sqrt(A*A + B*B)
+    return dis.min()
