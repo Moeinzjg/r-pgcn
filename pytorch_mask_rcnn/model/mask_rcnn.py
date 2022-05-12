@@ -117,7 +117,7 @@ class MaskRCNN(nn.Module):
              rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh)
 
         #------------ RoIHeads --------------------------
-        box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
+        box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3", "pool"], output_size=7, sampling_ratio=2)
         resolution = box_roi_pool.output_size[0]
         in_channels = out_channels * resolution ** 2
         mid_channels = 1024
@@ -129,14 +129,12 @@ class MaskRCNN(nn.Module):
                              box_reg_weights, box_score_thresh,
                              box_nms_thresh, box_num_detections)
 
-        self.head.mask_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=2)
+        self.head.mask_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3", "pool"], output_size=14, sampling_ratio=2)
         self.head.augmentation_roi_pool = MultiScaleRoIAlign(featmap_names=["0"], output_size=28, sampling_ratio=2)
         layers_mask = (256, 256, 256, 256)
         dim_reduced_mask = 256
 
         self.head.mask_predictor = MaskRCNNPredictor(out_channels, layers_mask, dim_reduced_mask, num_classes)
-        self.head.feature_augmentor = FeatureAugmentor(feats_dim=28, feats_channels=256, internal=2)
-        self.head.poly_augmentor = PolyAugmentor(out_channels)
         self.head.polygon_predictor = PolyGNN(out_channels, feature_grid_size=28)
 
         # ------------ Transformer --------------------------
@@ -220,67 +218,6 @@ class MaskRCNNPredictor(nn.Sequential):
         for name, param in self.named_parameters():
             if 'weight' in name:
                 nn.init.kaiming_normal_(param, mode='fan_out', nonlinearity='relu')
-
-class FeatureAugmentor(nn.Module):
-    def __init__(self, feats_dim=28, feats_channels=256, internal=2):
-        super(FeatureAugmentor, self).__init__()
-        self.grid_size = feats_dim
-
-        self.edge_conv = nn.Conv2d(in_channels=feats_channels,
-                                   out_channels=internal,
-                                   kernel_size=3,
-                                   padding=1)
-
-        self.edge_fc = nn.Linear(in_features=feats_dim**2 * internal,
-                                 out_features=feats_dim**2)
-
-        self.vertex_conv = nn.Conv2d(in_channels=feats_channels,
-                                     out_channels=internal,
-                                     kernel_size=3,
-                                     padding=1)
-
-        self.vertex_fc = nn.Linear(in_features=feats_dim**2 * internal,
-                                   out_features=feats_dim**2)
-
-    def forward(self, feats, temperature=0.0, beam_size=1):
-        """
-        if temperature < 0.01, use greedy
-        else, use temperature
-        """
-        batch_size = feats.size(0)
-        conv_edge = self.edge_conv(feats)
-        conv_edge = F.relu(conv_edge, inplace=True)
-        edge_logits = self.edge_fc(conv_edge.view(batch_size, -1))
-
-        conv_vertex = self.vertex_conv(feats)
-        conv_vertex = F.relu(conv_vertex)
-        vertex_logits = self.vertex_fc(conv_vertex.view(batch_size, -1))
-
-        edge_logits = edge_logits.view((-1, self.grid_size, self.grid_size)).unsqueeze(1)
-        vertex_logits = vertex_logits.view((-1, self.grid_size, self.grid_size)).unsqueeze(1)
-
-        return edge_logits, vertex_logits
-
-
-class PolyAugmentor(nn.Sequential):
-    def __init__(self, in_channels):
-        """
-        Equivalent to Edge Annotation in Kang's
-        Arguments:
-            in_channels (int)
-        """
-
-        d = OrderedDict()
-
-        d['cnn1'] = nn.Conv2d(in_channels + 2, 256, 3, 1, 1, bias=False)
-        d['bn1'] = nn.BatchNorm2d(256)
-        d['relu1'] = nn.ReLU(inplace=True)
-
-        d['cnn2'] = nn.Conv2d(256, 256, 3, 1, 1, bias=False)
-        d['bn2'] = nn.BatchNorm2d(256)
-        d['relu2'] = nn.ReLU(inplace=True)
-
-        super().__init__(d)
 
 
 class ResBackbone(nn.Module):
