@@ -248,6 +248,8 @@ class Visualizer:
         edges = predictions["edges"] if "edges" in predictions else None
         vertices = predictions["vertices"] if "vertices" in predictions else None
         labels = _create_text_labels(classes.tolist(), scores, class_names)
+        self.all_edges = None
+        self.all_vertices = None
 
         # targets
         gt_masks = targets["masks"].squeeze(0) if "masks" in targets else None
@@ -609,20 +611,22 @@ class Visualizer:
             ax.axis("off")
 
             # plot edge prediction
-            ax = self.fig_pred.add_subplot(223)
-            img_out = self.img.copy()
-            img_out[self.all_edges == 1] = [255, 0, 0]  # add edges
-            ax.imshow(img_out.astype("uint8"))
-            ax.set_title("edge prediction")
-            ax.axis("off")
+            if self.all_edges is not None:
+                ax = self.fig_pred.add_subplot(223)
+                img_out = self.img.copy()
+                img_out[self.all_edges == 1] = [255, 0, 0]  # add edges
+                ax.imshow(img_out.astype("uint8"))
+                ax.set_title("edge prediction")
+                ax.axis("off")
 
             # plot vertex prediction
-            ax = self.fig_pred.add_subplot(224)
-            img_out = self.output_vertex.get_image()
-            # img_out[self.all_vertices == 1] = [255, 0, 0]  # add vertices
-            ax.imshow(img_out.astype("uint8"))
-            ax.set_title("vertex prediction")
-            ax.axis("off")
+            if self.all_vertices is not None:
+                ax = self.fig_pred.add_subplot(224)
+                img_out = self.output_vertex.get_image()
+                # img_out[self.all_vertices == 1] = [255, 0, 0]  # add vertices
+                ax.imshow(img_out.astype("uint8"))
+                ax.set_title("vertex prediction")
+                ax.axis("off")
             
             plt.show()
 
