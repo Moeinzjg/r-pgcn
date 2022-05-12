@@ -117,7 +117,7 @@ class MaskRCNN(nn.Module):
              rpn_pre_nms_top_n, rpn_post_nms_top_n, rpn_nms_thresh)
 
         #------------ RoIHeads --------------------------
-        box_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=7, sampling_ratio=2)
+        box_roi_pool = MultiScaleRoIAlign(featmap_names=["2", "3", "pool"], output_size=7, sampling_ratio=2)
         resolution = box_roi_pool.output_size[0]
         in_channels = out_channels * resolution ** 2
         mid_channels = 1024
@@ -129,7 +129,7 @@ class MaskRCNN(nn.Module):
                              box_reg_weights, box_score_thresh,
                              box_nms_thresh, box_num_detections)
 
-        self.head.mask_roi_pool = MultiScaleRoIAlign(featmap_names=["0", "1", "2", "3"], output_size=14, sampling_ratio=2)
+        self.head.mask_roi_pool = MultiScaleRoIAlign(featmap_names=["2", "3", "pool"], output_size=14, sampling_ratio=2)
         self.head.augmentation_roi_pool = MultiScaleRoIAlign(featmap_names=["0"], output_size=28, sampling_ratio=2)
         self.head.poly_roi_pool = RoIAlign(output_size=(28, 28), sampling_ratio=2)
 
