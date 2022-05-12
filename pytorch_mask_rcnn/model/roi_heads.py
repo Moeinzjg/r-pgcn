@@ -45,34 +45,6 @@ def maskrcnn_loss(mask_logit, proposal, matched_idx, label, gt_mask):
     return mask_loss
 
 
-def edgercnn_loss(edge_logit, proposal, matched_idx, label, gt_edge):
-    matched_idx = matched_idx[:, None].to(proposal)
-    roi = torch.cat((matched_idx, proposal), dim=1)
-
-    M = edge_logit.shape[-1]
-    gt_edge = gt_edge[:, None].to(roi)
-    edge_target = roi_align(gt_edge, roi, 1., M, M, -1)[:, 0]
-
-    idx = torch.arange(label.shape[0], device=label.device)
-    edge_bce = F.binary_cross_entropy_with_logits(edge_logit[idx, 0], edge_target, pos_weight=torch.Tensor([28*28/50]).to(idx.device))
-    edge_dice = dice_loss(torch.sigmoid(edge_logit[idx, 0]), edge_target)
-    edge_loss = edge_bce + edge_dice
-    return 0.2 * edge_loss
-
-
-def vertexrcnn_loss(vertex_logit, proposal, matched_idx, label, gt_vertex):
-    matched_idx = matched_idx[:, None].to(proposal)
-    roi = torch.cat((matched_idx, proposal), dim=1)
-
-    M = vertex_logit.shape[-1]
-    gt_vertex = gt_vertex[:, None].to(roi)
-    vertex_target = roi_align(gt_vertex, roi, 1., M, M, -1)[:, 0]
-
-    idx = torch.arange(label.shape[0], device=label.device)
-    vertex_loss = F.binary_cross_entropy_with_logits(vertex_logit[idx, 0], vertex_target, pos_weight=torch.Tensor([28*28/16*3]).to(idx.device))
-    return vertex_loss
-
-
 def poly_matching_loss(pnum, pred, gt, matched_idx, loss_type="L1"):
 
     matched_idx = matched_idx.unsqueeze(1).unsqueeze(2).long().to(gt.device)
@@ -205,6 +177,7 @@ class RoIHeads(nn.Module):
         if self.training:
             proposal, matched_idx, label, regression_target = self.select_training_samples(proposal, target)
         w, h = image_shape
+
         box_feature = self.box_roi_pool(feature, [proposal], [(w, h)])
         class_logit, box_regression = self.box_predictor(box_feature)
 
@@ -249,43 +222,29 @@ class RoIHeads(nn.Module):
             mask_logit = self.mask_predictor(mask_feature)
 
             augmentation_feature = self.augmentation_roi_pool(feature, [mask_proposal], [(w, h)])
-            edge_logit, vertex_logit = self.feature_augmentor(augmentation_feature)
-            # Feature augmentation
-            enhanced_feature = torch.cat([augmentation_feature, edge_logit, vertex_logit], 1)
-            poly_feature = self.poly_augmentor(enhanced_feature)
 
             # GCN
             # create circle polygon data
             init_polys = get_initial_points(self.num_points)
-            init_polys = torch.from_numpy(init_polys).unsqueeze(0).repeat(poly_feature.shape[0], 1, 1)
-            polygcn_feature = poly_feature.permute(0, 2, 3, 1).view(-1, poly_feature.shape[-1]**2, poly_feature.shape[1])
+            init_polys = torch.from_numpy(init_polys).unsqueeze(0).repeat(augmentation_feature.shape[0], 1, 1)
+            polygcn_feature = augmentation_feature.permute(0, 2, 3, 1).view(-1, augmentation_feature.shape[-1]**2,
+                                                                            augmentation_feature.shape[1])
             pred_polygon, pred_adjacent = self.polygon_predictor(polygcn_feature, init_polys)
 
             if self.training:
                 gt_mask = target['masks']
-                gt_edge = target['edges']
-                gt_vertex = target['vertices']
                 gt_polygon = target['polygons']
 
                 mask_loss = maskrcnn_loss(mask_logit, mask_proposal, pos_matched_idx, mask_label, gt_mask)
-                edge_loss = edgercnn_loss(edge_logit, mask_proposal, pos_matched_idx, mask_label, gt_edge)
-                vertex_loss = vertexrcnn_loss(vertex_logit, mask_proposal, pos_matched_idx, mask_label, gt_vertex)
                 _, polygon_loss = poly_matching_loss(self.num_points, pred_polygon, gt_polygon, pos_matched_idx, loss_type="L1")
-                losses.update(dict(roi_mask_loss=mask_loss, roi_edge_loss=edge_loss,
-                                   roi_vertex_loss=vertex_loss, roi_polygon_loss=polygon_loss))
+                losses.update(dict(roi_mask_loss=mask_loss, roi_polygon_loss=polygon_loss))
             else:
                 label = result['labels']
                 idx = torch.arange(label.shape[0], device=label.device)
 
                 mask_logit = mask_logit[idx, label]
-                edge_logit = edge_logit[idx, 0]
-                vertex_logit = vertex_logit[idx, 0]
-
                 mask_prob = mask_logit.sigmoid()
-                edge_prob = edge_logit.sigmoid()
-                vertex_prob = vertex_logit.sigmoid()
 
-                result.update(dict(masks=mask_prob, edges=edge_prob, vertices=vertex_prob,
-                                   polygons=pred_polygon, adjacency=pred_adjacent))
+                result.update(dict(masks=mask_prob, polygons=pred_polygon, adjacency=pred_adjacent))
 
         return result, losses
