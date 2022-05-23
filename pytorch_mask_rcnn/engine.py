@@ -52,7 +52,7 @@ def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, arg
         optimizer.zero_grad()
 
         if num_iters % args.print_freq == 0:
-            print("{}\t".format(num_iters), "\t".join("{:.3f}".format(l.item()) for l in losses.values()))
+            print("{}\t".format(num_iters), "\t".join("{:.3f}".format(l.detach().item()) for l in losses.values()))
 
             # log into tensorboard
             for k in losses.keys():
@@ -145,8 +145,8 @@ def generate_results(model, data_loader, device, args, poly=False):
         output = model(image)
         m_m.update(time.time() - S)
 
-        prediction = {target["image_id"].item(): {k: v.cpu() for k, v in output.items()}}
-        prediction[target["image_id"].item()].update({'masks_from_polygons': mask_from_poly(output['polygons'].cpu(),
+        prediction = {target["image_id"].item(): {k: v.detach().cpu() for k, v in output.items()}}
+        prediction[target["image_id"].item()].update({'masks_from_polygons': mask_from_poly(output['polygons'].detach().cpu(),
                                                                                             image.shape[2],
                                                                                             image.shape[1])})
 
