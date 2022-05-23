@@ -139,7 +139,6 @@ def iou_from_mask(pred, gt):
     false_negatives = np.count_nonzero(np.logical_and(gt, np.logical_not(pred)))
     false_positives = np.count_nonzero(np.logical_and(np.logical_not(gt), pred))
     true_positives = np.count_nonzero(np.logical_and(gt, pred))
-
     union = float(true_positives + false_positives + false_negatives)
     intersection = float(true_positives)
 
@@ -173,7 +172,6 @@ def iou_from_poly(pred, gt, width, height):
     else:
         for idx in range(gt.shape[0]):
             masks[1] = draw_poly12(masks[1], gt[idx, :, :])
-
     return iou_from_mask(masks[0], masks[1]), masks
 
 
@@ -311,11 +309,10 @@ def match_bboxes(bbox_gt, bbox_pred, IOU_THRESH=0.5):
 def compute_contour_metrics(poly_gt, poly_pred):
     gt_polygons = [shapely.geometry.Polygon(np.array(poly)) for poly in poly_gt]
     dt_polygons = [shapely.geometry.Polygon(np.array(poly)) for poly in poly_pred]
-    try:
-        fixed_gt_polygons = polygon_utils.fix_polygons(gt_polygons, buffer=0.0001)  # Buffer adds vertices but is needed to repair some geometries
-        fixed_dt_polygons = polygon_utils.fix_polygons(dt_polygons)  # TODO: fix this problem
-    except:
-        return []
+
+    fixed_gt_polygons = polygon_utils.fix_polygons(gt_polygons, buffer=0.0001)  # Buffer adds vertices but is needed to repair some geometries
+    fixed_dt_polygons = polygon_utils.fix_polygons(dt_polygons)
+
     max_angle_diffs = polygon_utils.compute_polygon_contour_measures(fixed_dt_polygons, fixed_gt_polygons, sampling_spacing=2.0, min_precision=0.5, max_stretch=2)
     return max_angle_diffs
 
@@ -337,9 +334,13 @@ def maxtan_from_poly(pred, gt):
     poly_gt = [gt['global_polygons'][i] for i in gt_idx]
     poly_pred = pred['polygons'].detach().cpu().numpy()
     poly_pred = [poly_pred[j] for j in pred_idx]
+
+
+    _, masks = iou_from_poly(pred['polygons'].detach().cpu().numpy(), gt['global_polygons'], 650, 650)
+
     max_angle_diffs = compute_contour_metrics(poly_gt, poly_pred)
     poly_nvertex = [poly.shape[0] for poly in poly_gt]
-    if len(max_angle_diffs) == 0:  # TODO: fix this
+    if len(max_angle_diffs) == 0:
         area = []
         slope = []
         poly_nvertex = []
