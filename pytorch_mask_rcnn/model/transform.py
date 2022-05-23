@@ -11,9 +11,9 @@ class Transformer:
         self.image_mean = image_mean
         self.image_std = image_std
 
-    def __call__(self, image, target):
+    def __call__(self, image, target, training=True):
         image = self.normalize(image)
-        image, target = self.resize(image, target)
+        image, target = self.resize(image, target, training=training)
         image = self.batched_image(image)
 
         return image, target
@@ -27,7 +27,7 @@ class Transformer:
         std = torch.tensor(self.image_std, dtype=dtype, device=device)
         return (image - mean[:, None, None]) / std[:, None, None]
 
-    def resize(self, image, target):
+    def resize(self, image, target, training=True):
         ori_image_shape = image.shape[-2:]
         min_size = float(min(image.shape[-2:]))
         max_size = float(max(image.shape[-2:]))
@@ -37,6 +37,14 @@ class Transformer:
         image = F.interpolate(image[None], size=size, mode='bilinear', align_corners=False)[0]
 
         if target is None:
+            return image, target
+        
+        if not training:
+            if 'imgrad' in target:
+                imgrad = target['imgrad']
+                imgrad = imgrad.unsqueeze(0)
+                target['imgrad'] = F.interpolate(imgrad[None], size=size, mode='bilinear', align_corners=False)[0]
+
             return image, target
 
         if 'boxes' in target:

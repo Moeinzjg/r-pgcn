@@ -147,13 +147,16 @@ class MaskRCNN(nn.Module):
     def forward(self, image, target=None):
         ori_image_shape = image.shape[-2:]
 
-        image, target = self.transformer(image, target)
+        image, target = self.transformer(image, target, self.training)
         image_shape = image.shape[-2:]
         feature = self.backbone(image)
         proposal = []
         rpn_losses = {'rpn_objectness_loss': 0.0, 'rpn_box_loss': 0.0}
         for k in feature.keys():
-            prop, rpn_loss = self.rpn(feature[k], image_shape, target)
+            if self.training:
+                prop, rpn_loss = self.rpn(feature[k], image_shape, target)
+            else:
+                prop, rpn_loss = self.rpn(feature[k], image_shape, None)
             proposal.append(prop)
             if 'rpn_objectness_loss' in rpn_loss:
                 rpn_losses['rpn_objectness_loss'] += rpn_loss['rpn_objectness_loss']
