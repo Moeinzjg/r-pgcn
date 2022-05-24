@@ -335,9 +335,6 @@ def maxtan_from_poly(pred, gt):
     poly_pred = pred['polygons'].detach().cpu().numpy()
     poly_pred = [poly_pred[j] for j in pred_idx]
 
-
-    _, masks = iou_from_poly(pred['polygons'].detach().cpu().numpy(), gt['global_polygons'], 650, 650)
-
     max_angle_diffs = compute_contour_metrics(poly_gt, poly_pred)
     poly_nvertex = [poly.shape[0] for poly in poly_gt]
     if len(max_angle_diffs) == 0:
