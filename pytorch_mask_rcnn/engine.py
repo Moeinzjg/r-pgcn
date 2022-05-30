@@ -17,7 +17,7 @@ def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, arg
     b_m = Meter("backward")
     model.train()
     A = time.time()
-    for i, (image, target) in enumerate(data_loader):
+    for i, (image, target, _) in enumerate(data_loader):
         T = time.time()
         num_iters = epoch * len(data_loader) + i
 
@@ -120,12 +120,14 @@ def generate_results(model, data_loader, device, args, poly=False):
     coco_results = []
     coco_results_poly = []
     if poly:
+        img_names = []
         poly_iou = []
         poly_maxtan = []
         poly_area = []
         poly_slope = []
         poly_nvertex = []
     else:
+        img_names = None
         poly_iou = None
         poly_maxtan = None
         poly_area = None
@@ -134,7 +136,7 @@ def generate_results(model, data_loader, device, args, poly=False):
 
     model.eval()
     A = time.time()
-    for i, (image, target) in enumerate(data_loader):
+    for i, (image, target, image_name) in enumerate(data_loader):
         T = time.time()
         
         image = image.to(device)
@@ -161,11 +163,12 @@ def generate_results(model, data_loader, device, args, poly=False):
             gt = target
             iou, _ = iou_from_poly(pred['polygons'], gt['global_polygons'], image.shape[2], image.shape[1])
             maxtan, area, slope, nvertex = maxtan_from_poly(pred, gt)
-            poly_iou.append(iou)
             poly_maxtan.extend(maxtan)
             poly_area.extend(area)
             poly_slope.extend(slope)
             poly_nvertex.extend(nvertex)
+            img_names.extend([image_name for _ in range(len(maxtan))])
+            poly_iou.extend([iou for _ in range(len(maxtan))])
 
         t_m.update(time.time() - T)
         if i >= iters - 1:
@@ -174,12 +177,13 @@ def generate_results(model, data_loader, device, args, poly=False):
     A = time.time() - A
     print("iter: {:.1f}, total: {:.1f}, model: {:.1f}".format(1000*A/iters,1000*t_m.avg,1000*m_m.avg))
     torch.save(coco_results, args.results)
-    if poly:
+    if poly:  # FIXME: maxtan and images, and ious are matched. slope, nvertex and area are matched. but not the 2 groups with each other.
         torch.save(coco_results_poly, args.rpolygcn_results)
         with open(os.path.join(os.path.dirname(args.ckpt_path), 'poly_metrics.txt'), 'w') as f:
-            f.write('maxtan  area  slope  #vertex\n')
+            f.write('img_name maxtan  area  slope  #vertex  ious\n')
             for l in range(len(poly_maxtan)):
-                f.write('%(aa)02f  %(bb)02f  %(cc)02f %(dd)d\n'%{'aa': poly_maxtan[l], 'bb': poly_area[l], 'cc': poly_slope[l], 'dd': poly_nvertex[l]})
+                f.write('%(ii)s %(aa)02f  %(bb)02f  %(cc)02f %(dd)d  %(ee)02f\n'%
+                {'ii': img_names[l], 'aa': poly_maxtan[l], 'bb': poly_area[l], 'cc': poly_slope[l], 'dd': poly_nvertex[l], 'ee': poly_iou[l]})
 
     return A / iters, poly_iou, poly_maxtan, poly_area, poly_slope
 

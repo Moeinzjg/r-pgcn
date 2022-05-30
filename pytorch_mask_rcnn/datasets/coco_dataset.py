@@ -38,7 +38,7 @@ class COCODataset(GeneralizedDataset):
         img_path = os.path.join(self.data_dir, "{}".format(self.split), img_info["file_name"])
         with Image.open(img_path) as image:
             image = image.convert("RGB")
-        return image
+        return image, img_info["file_name"]
 
     @staticmethod
     def convert_to_xyxy(box):  # box format: (xmin, ymin, w, h)

@@ -17,10 +17,10 @@ class GeneralizedDataset:
             
     def __getitem__(self, i):
         img_id = self.ids[i]
-        image = self.get_image(img_id)
+        image, image_name = self.get_image(img_id)
         image = transforms.ToTensor()(image)
         target = self.get_target(img_id) if self.train else {}
-        return image, target
+        return image, target, image_name
     
     def __len__(self):
         return len(self.ids)
