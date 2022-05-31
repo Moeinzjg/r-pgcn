@@ -3,8 +3,10 @@ import re
 import argparse
 
 import torch
-import pytorch_mask_rcnn as pmr
+from torchvision import transforms
+from PIL import Image
 
+import pytorch_mask_rcnn as pmr
 
 def main(args):
     use_cuda = True
@@ -41,31 +43,40 @@ def main(args):
 
     # Visualization
     num_images = args.num_img
+    if args.img_dir:
+        with Image.open(args.img_dir) as image:
+            image = image.convert("RGB")
+            image = transforms.ToTensor()(image)
+            image = image.to(device)
 
-    for i, imagetargetname in enumerate(d):
-        image = imagetargetname[0]
-        target = imagetargetname[1]
-        name = imagetargetname[2]
-
-        image = image.to(device)[0]
-
-        global_poly = target['global_polygons']
-        target.pop('global_polygons')
-        target = {k: v.to(device) for k, v in target.items()}
-        target['global_polygons'] = global_poly
-
-        with torch.no_grad():
             result = model(image)
-        pmr.show(image, result, target, ds.classes, "./maskrcnn_results/images/output{}".format(i))
+            pmr.show(image, result, None, ds.classes, "./maskrcnn_results/images/output1")
+    else:
+        for i, imagetargetname in enumerate(d):
+            image = imagetargetname[0]
+            target = imagetargetname[1]
+            name = imagetargetname[2]
 
-        if i >= num_images - 1:
-            break
+            image = image.to(device)[0]
+
+            global_poly = target['global_polygons']
+            target.pop('global_polygons')
+            target = {k: v.to(device) for k, v in target.items()}
+            target['global_polygons'] = global_poly
+
+            with torch.no_grad():
+                result = model(image)
+            pmr.show(image, result, target, ds.classes, "./maskrcnn_results/images/output{}".format(i))
+
+            if i >= num_images - 1:
+                break
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", default="coco")
     parser.add_argument("--data_dir", default="../Vegas_coco_random_splits")
+    parser.add_argument("--img_dir")
     parser.add_argument("--ckpt_path", default="maskrcnn_coco-25.pth")
     parser.add_argument("--num_img", default=3, type=int)
     parser.add_argument("--shuffle", action="store_true")
