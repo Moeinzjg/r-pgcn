@@ -42,7 +42,11 @@ def main(args):
     # Visualization
     num_images = args.num_img
 
-    for i, (image, target) in enumerate(d):
+    for i, imagetargetname in enumerate(d):
+        image = imagetargetname[0]
+        target = imagetargetname[1]
+        name = imagetargetname[2]
+
         image = image.to(device)[0]
 
         global_poly = target['global_polygons']
