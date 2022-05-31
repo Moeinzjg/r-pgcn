@@ -252,7 +252,7 @@ class Visualizer:
         # targets
         gt_masks = targets["masks"].squeeze(0) if "masks" in targets else None
         gt_polygons = targets["global_polygons"] if "global_polygons" in targets else None
-        gt_polygons = list(map(torch.squeeze, gt_polygons))
+        gt_polygons = list(map(torch.squeeze, gt_polygons)) if "global_polygons" in targets else None
         gt_vertices = targets["vertices"].squeeze(0) if "vertices" in targets else None
         gt_edges = targets["edges"].squeeze(0) if "edges" in targets else None
 
