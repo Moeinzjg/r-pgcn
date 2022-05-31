@@ -97,14 +97,18 @@ class COCODataset(GeneralizedDataset):
 
     def make_polygon(self, poly, shape, bbox):
         EPS = 1e-7
+        poly = poly[:-2]  # remove the duplicate first point at the end
         poly_temp = poly.copy()
         poly_temp = np.array(poly_temp).reshape(-1, 2)  # [x, y]
         poly_temp[:, 0] = np.clip(poly_temp[:, 0], 0 + EPS, shape[0] - EPS)
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
         poly_temp = np.floor(poly_temp).astype(np.int32)
 
+        poly_temp_copy = poly_temp.copy()
         polygon = self.uniform_sample(poly_temp, self.num_points)
+        # self.poly_show(polygon, poly_temp_copy)
         arr_polygon = np.ones((self.num_points, 2), np.float32) * 0.
+
         arr_polygon[:, :] = polygon
 
         # convert coordinates from global to local i.e. [0, 1]
@@ -127,6 +131,7 @@ class COCODataset(GeneralizedDataset):
     @staticmethod
     def make_global_polygon(poly, shape):
         EPS = 1e-7
+        poly = poly[:-2]  # remove the duplicate first point at the end
         poly_glob = poly.copy()
         poly_glob = np.array(poly_glob).reshape(-1, 2)  # [x, y]
         poly_glob[:, 0] = np.clip(poly_glob[:, 0], 0 + EPS, shape[0] - EPS)
@@ -200,6 +205,21 @@ class COCODataset(GeneralizedDataset):
             psamplenp = np.concatenate(psample, axis=0)
             return psamplenp
     
+    def poly_show(self, poly_sampled, poly_gt):
+            import matplotlib.pyplot as plt
+            # close the polygons
+            poly_sampled = np.concatenate([poly_sampled, np.expand_dims(poly_sampled[0], 0)], 0)
+            poly_gt = np.concatenate([poly_gt, np.expand_dims(poly_gt[0], 0)], 0)
+            
+            plt.plot(poly_gt[:, 0], poly_gt[:, 1], 'g')
+            plt.plot(poly_gt[:, 0], poly_gt[:, 1], 'gs')
+
+            plt.plot(poly_sampled[:, 0], poly_sampled[:, 1], 'r-.')
+            plt.plot(poly_sampled[:, 0], poly_sampled[:, 1], 'r*')
+
+            plt.show()
+            return 0
+
     @staticmethod
     def expand_bbox(bbox, image_shape):
         x_min, y_min, w, h = bbox
