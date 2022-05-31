@@ -121,6 +121,9 @@ def generate_results(model, data_loader, device, args, poly=False):
     coco_results_poly = []
     if poly:
         img_names = []
+        img_names_maxtan = []
+        img_ids = []
+        img_ids_maxtan = []
         poly_iou = []
         poly_maxtan = []
         poly_area = []
@@ -128,6 +131,9 @@ def generate_results(model, data_loader, device, args, poly=False):
         poly_nvertex = []
     else:
         img_names = None
+        img_names_maxtan = None
+        img_ids = None
+        img_ids_maxtan = None
         poly_iou = None
         poly_maxtan = None
         poly_area = None
@@ -151,7 +157,7 @@ def generate_results(model, data_loader, device, args, poly=False):
         prediction[target["image_id"].item()].update({'masks_from_polygons': mask_from_poly(output['polygons'].detach().cpu(),
                                                                                             image.shape[2],
                                                                                             image.shape[1])})
-
+        image_id = target['image_id']
         # coco evaluation on masks
         coco_results.extend(prepare_for_coco(prediction))
         # on masks from polygons
@@ -167,8 +173,11 @@ def generate_results(model, data_loader, device, args, poly=False):
             poly_area.extend(area)
             poly_slope.extend(slope)
             poly_nvertex.extend(nvertex)
-            img_names.extend([image_name for _ in range(len(maxtan))])
-            poly_iou.extend([iou for _ in range(len(maxtan))])
+            img_names.extend([image_name for _ in range(len(area))])
+            img_ids.extend([image_id for _ in range(len(area))])
+            img_names_maxtan.extend([image_name for _ in range(len(maxtan))])
+            img_ids_maxtan.extend([image_id for _ in range(len(maxtan))])
+            poly_iou.extend([iou for _ in range(len(area))])
 
         t_m.update(time.time() - T)
         if i >= iters - 1:
@@ -177,13 +186,19 @@ def generate_results(model, data_loader, device, args, poly=False):
     A = time.time() - A
     print("iter: {:.1f}, total: {:.1f}, model: {:.1f}".format(1000*A/iters,1000*t_m.avg,1000*m_m.avg))
     torch.save(coco_results, args.results)
-    if poly:  # FIXME: maxtan and images, and ious are matched. slope, nvertex and area are matched. but not the 2 groups with each other.
+    if poly:
         torch.save(coco_results_poly, args.rpolygcn_results)
         with open(os.path.join(os.path.dirname(args.ckpt_path), 'poly_metrics.txt'), 'w') as f:
-            f.write('img_name maxtan  area  slope  #vertex  ious\n')
+            f.write('img_id  img_name  area  slope  #vertex  ious\n')
+            for l in range(len(poly_area)):
+                f.write('%(idx)d %(ii)s %(bb)02f  %(cc)02f %(dd)d  %(ee)02f\n'%
+                {'idx': img_ids[l], 'ii': img_names[l], 'bb': poly_area[l], 'cc': poly_slope[l], 'dd': poly_nvertex[l], 'ee': poly_iou[l]})
+            
+        with open(os.path.join(os.path.dirname(args.ckpt_path), 'poly_maxtan.txt'), 'w') as f:
+            f.write('img_name maxtan\n')
             for l in range(len(poly_maxtan)):
-                f.write('%(ii)s %(aa)02f  %(bb)02f  %(cc)02f %(dd)d  %(ee)02f\n'%
-                {'ii': img_names[l], 'aa': poly_maxtan[l], 'bb': poly_area[l], 'cc': poly_slope[l], 'dd': poly_nvertex[l], 'ee': poly_iou[l]})
+                f.write('%(idx)d %(ii)s %(aa)02f\n'%
+                {'idx': img_ids_maxtan[l], 'ii': img_names_maxtan[l], 'aa': poly_maxtan[l]})
 
     return A / iters, poly_iou, poly_maxtan, poly_area, poly_slope
 
