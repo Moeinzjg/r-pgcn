@@ -23,10 +23,12 @@ def train_one_epoch(model, trainable, optimizer, data_loader, device, epoch, arg
 
         image = image.to(device)
         target.pop('global_polygons')
-        target = {k: v.to(device) for k, v in target.items()}
+        gt = {k: v.to(device) for k, v in target.items() if k != 'polygons'}
+        gt['polygons'] = target['polygons']
+        
         S = time.time()
 
-        losses = model(image, target)
+        losses = model(image, gt)
 
         if trainable == 'MASK':
             losses['roi_polygon_loss'] = torch.tensor(0, requires_grad=False)

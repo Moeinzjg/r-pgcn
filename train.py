@@ -39,17 +39,17 @@ def main(args):
 
     if args.train_mode == "multistep":
         # Step1: Train the network till the end of localization (FA) module
-        train(model, 20, d_train, d_val, args, device, trainable='MASK')
+        # train(model, 20, d_train, d_val, args, device, trainable='MASK')
 
         # Step2: Only Train poly augmentor and GCN
-        train(model, 30, d_train, d_val, args, device, trainable='FAGCN')
+        train(model, 50, d_train, d_val, args, device, trainable='FAGCN')
 
         # Step3: Train all togather
-        train(model, 35, d_train, d_val, args, device, trainable='All')
+        train(model, 65, d_train, d_val, args, device, trainable='All')
     
     elif args.train_mode == "simul":
         # Train all togather
-        train(model, 35, d_train, d_val, args, device, trainable='All')
+        train(model, 36, d_train, d_val, args, device, trainable='All')
 
     print('-------------------- Finished! --------------------')
 

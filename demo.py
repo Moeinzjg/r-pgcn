@@ -61,6 +61,8 @@ def main(args):
 
             global_poly = target['global_polygons']
             target.pop('global_polygons')
+            global_poly = target['polygons']
+            target.pop('polygons')
             target = {k: v.to(device) for k, v in target.items()}
             target['global_polygons'] = global_poly
 

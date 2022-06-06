@@ -10,14 +10,13 @@ from .generalized_dataset import GeneralizedDataset
 
 
 class COCODataset(GeneralizedDataset):
-    def __init__(self, data_dir, split, train=False, num_points=16):
+    def __init__(self, data_dir, split, train=False):
         super().__init__()
         from pycocotools.coco import COCO
 
         self.data_dir = data_dir
         self.split = split
         self.train = train
-        self.num_points = num_points
 
         ann_file = os.path.join(data_dir, "annotations/instances_{}.json".format(split))
         self.coco = COCO(ann_file)
@@ -103,13 +102,8 @@ class COCODataset(GeneralizedDataset):
         poly_temp[:, 0] = np.clip(poly_temp[:, 0], 0 + EPS, shape[0] - EPS)
         poly_temp[:, 1] = np.clip(poly_temp[:, 1], 0 + EPS, shape[1] - EPS)
         poly_temp = np.floor(poly_temp).astype(np.int32)
-
-        poly_temp_copy = poly_temp.copy()
-        polygon = self.uniform_sample(poly_temp, self.num_points)
-        # self.poly_show(polygon, poly_temp_copy)
-        arr_polygon = np.ones((self.num_points, 2), np.float32) * 0.
-
-        arr_polygon[:, :] = polygon
+        arr_polygon = poly_temp.copy().astype(np.float32)
+        # self.poly_show(arr_polygon, poly_temp)
 
         # convert coordinates from global to local i.e. [0, 1]
         x_min, y_min, w, h = bbox
@@ -139,71 +133,6 @@ class COCODataset(GeneralizedDataset):
         poly_glob = np.floor(poly_glob).astype(np.int32)
 
         return poly_glob
-
-    def uniform_sample(self, pgtnp_px2, newpnum):
-
-        pnum, cnum = pgtnp_px2.shape
-        assert cnum == 2
-
-        idxnext_p = (np.arange(pnum, dtype=np.int32) + 1) % pnum  # Hypothesis Enhanced Features
-        pgtnext_px2 = pgtnp_px2[idxnext_p]
-        edgelen_p = np.sqrt(np.sum((pgtnext_px2 - pgtnp_px2) ** 2, axis=1))
-        edgeidxsort_p = np.argsort(edgelen_p)
-
-        # two cases
-        # we need to remove gt points
-        # we simply remove shortest paths
-
-        if pnum > newpnum:
-            edgeidxkeep_k = edgeidxsort_p[pnum - newpnum:]
-            edgeidxsort_k = np.sort(edgeidxkeep_k)
-            pgtnp_kx2 = pgtnp_px2[edgeidxsort_k]
-            assert pgtnp_kx2.shape[0] == newpnum
-            return pgtnp_kx2
-        # we need to add gt points
-        # we simply add it uniformly
-        else:
-            edgenum = np.round(edgelen_p * newpnum / np.sum(edgelen_p)).astype(np.int32)
-            for i in range(pnum):
-                if edgenum[i] == 0:
-                    edgenum[i] = 1
-
-            # after round, it may has 1 or 2 mismatch
-            edgenumsum = np.sum(edgenum)
-            if edgenumsum != newpnum:
-
-                if edgenumsum > newpnum:
-
-                    id = -1
-                    passnum = edgenumsum - newpnum
-                    while passnum > 0:
-                        edgeid = edgeidxsort_p[id]
-                        if edgenum[edgeid] > passnum:
-                            edgenum[edgeid] -= passnum
-                            passnum -= passnum
-                        else:
-                            passnum -= edgenum[edgeid] - 1
-                            edgenum[edgeid] -= edgenum[edgeid] - 1
-                            id -= 1
-                else:
-                    id = -1
-                    edgeid = edgeidxsort_p[id]
-                    edgenum[edgeid] += newpnum - edgenumsum
-            
-            assert np.sum(edgenum) == newpnum
-
-            psample = []
-            for i in range(pnum):
-                pb_1x2 = pgtnp_px2[i:i + 1]
-                pe_1x2 = pgtnext_px2[i:i + 1]
-
-                wnp_kx1 = np.arange(edgenum[i], dtype=np.float32).reshape(-1, 1) / edgenum[i]
-
-                pmids = pb_1x2 * (1 - wnp_kx1) + pe_1x2 * wnp_kx1
-                psample.append(pmids)
-
-            psamplenp = np.concatenate(psample, axis=0)
-            return psamplenp
     
     def poly_show(self, poly_sampled, poly_gt):
             import matplotlib.pyplot as plt
@@ -285,7 +214,6 @@ class COCODataset(GeneralizedDataset):
             masks = torch.stack(masks)
             edge_masks = torch.stack(edge_masks)
             vertex_masks = torch.stack(vertex_masks)
-            polygons = torch.tensor(np.array(polygons), dtype=torch.float32)
 
         target = dict(image_id=torch.tensor([img_id]), boxes=boxes, labels=labels,
                       masks=masks, edges=edge_masks, vertices=vertex_masks,

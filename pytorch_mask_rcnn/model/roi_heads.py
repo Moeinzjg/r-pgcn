@@ -3,7 +3,8 @@ import torch.nn.functional as F
 from torch import nn
 import numpy as np
 
-from .utils import Matcher, BalancedPositiveNegativeSampler, roi_align, get_initial_points
+from .utils import Matcher, BalancedPositiveNegativeSampler, roi_align, sample_points_from_mask_contours
+from .utils import biprojection_loss, relative_shape_loss
 from .box_ops import BoxCoder, box_iou, process_box, nms
 
 
@@ -73,49 +74,16 @@ def vertexrcnn_loss(vertex_logit, proposal, matched_idx, label, gt_vertex):
     return vertex_loss
 
 
-def poly_matching_loss(pnum, pred, gt, matched_idx, loss_type="L1"):
-
-    matched_idx = matched_idx.unsqueeze(1).unsqueeze(2).long().to(gt.device)
-    matched_idx = matched_idx.expand(-1, gt.shape[1], gt.shape[2])
-    # print('--------------------------')
-    # print(f'gt shape: {gt.shape}, matched_idx shape: {matched_idx2.shape}')
-    # print(f'matched idx max: {matched_idx.max()}, matched idx min: {matched_idx2.min()}')
-    # print(f'matched idx: {matched_idx}')
-    # print('--------------------------')
-    gt = torch.gather(gt, 0, matched_idx)
-
-    batch_size = pred.size()[0]
-    pidxall = np.zeros(shape=(batch_size, pnum, pnum), dtype=np.int32)
-
-    for b in range(batch_size):
-        for i in range(pnum):
-            pidx = (np.arange(pnum) + i) % pnum
-            pidxall[b, i] = pidx
-
-    pidxall = torch.from_numpy(np.reshape(pidxall, newshape=(batch_size, -1))).to(pred.device)
-
-    feature_id = pidxall.unsqueeze_(2).long().expand(pidxall.size(0), pidxall.size(1), gt.size(2)).detach()
-    gt_expand = torch.gather(gt, 1, feature_id).view(batch_size, pnum, pnum, 2)
-
-    pred_expand = pred.unsqueeze(1)
-
-    dis = pred_expand - gt_expand
-
-    if loss_type == "L2":
-        dis = (dis ** 2).sum(3).sqrt().sum(2)
-    elif loss_type == "L1":
-        dis = torch.abs(dis).sum(3).sum(2)
-
-    min_dis, min_id = torch.min(dis, dim=1, keepdim=True)
-    min_id = torch.from_numpy(min_id.data.cpu().numpy()).to(pred.device)
-    min_gt_id_to_gather = min_id.unsqueeze_(2).unsqueeze_(3).long().expand(min_id.size(0),
-                                                                           min_id.size(1),
-                                                                           gt_expand.size(2),
-                                                                           gt_expand.size(3))
-
-    gt_right_order = torch.gather(gt_expand, 1, min_gt_id_to_gather).view(batch_size, pnum, 2)  # TODO: check the application of this
-
-    return gt_right_order, 0.25 * torch.mean(min_dis)
+def poly_similarity_loss(pred, gt, matched_idx):
+    matched_idx = matched_idx.to(pred.device)
+    loss = torch.zeros(len(pred), dtype=torch.float32)
+    for idx in range(matched_idx.shape[0]):
+        target = torch.from_numpy(gt[idx]).to(pred[0].device)
+        bploss = biprojection_loss(pred[idx], target)
+        # rshloss = relative_shape_loss(pred[idx], target)
+        loss[idx] = bploss  #+ rshloss
+    
+    return torch.mean(loss)
 
 
 class RoIHeads(nn.Module):
@@ -241,8 +209,8 @@ class RoIHeads(nn.Module):
                 if mask_proposal.shape[0] == 0:
                     result.update(dict(masks=torch.empty((0, 28, 28)),
                                        edges=torch.empty((0, 28, 28)), vertices=torch.empty((0, 28, 28)),
-                                       polygons=torch.empty((0, self.num_points, 2)),
-                                       adjacency=torch.empty((0, self.num_points, self.num_points))))
+                                       polygons=torch.empty((0, 0, 2), ),
+                                       adjacency=torch.empty((0, 0, 0))))
                     return result, losses
 
             mask_feature = self.mask_roi_pool(feature, [mask_proposal], [(w, h)])
@@ -256,8 +224,7 @@ class RoIHeads(nn.Module):
 
             # GCN
             # create circle polygon data
-            init_polys = get_initial_points(self.num_points)
-            init_polys = torch.from_numpy(init_polys).unsqueeze(0).repeat(poly_feature.shape[0], 1, 1)
+            init_polys = sample_points_from_mask_contours(mask_logit.sigmoid())
             polygcn_feature = poly_feature.permute(0, 2, 3, 1).view(-1, poly_feature.shape[-1]**2, poly_feature.shape[1])
             pred_polygon, pred_adjacent = self.polygon_predictor(polygcn_feature, init_polys)
 
@@ -270,7 +237,7 @@ class RoIHeads(nn.Module):
                 mask_loss = maskrcnn_loss(mask_logit, mask_proposal, pos_matched_idx, mask_label, gt_mask)
                 edge_loss = edgercnn_loss(edge_logit, mask_proposal, pos_matched_idx, mask_label, gt_edge)
                 vertex_loss = vertexrcnn_loss(vertex_logit, mask_proposal, pos_matched_idx, mask_label, gt_vertex)
-                _, polygon_loss = poly_matching_loss(self.num_points, pred_polygon, gt_polygon, pos_matched_idx, loss_type="L1")
+                _, polygon_loss = poly_similarity_loss(pred_polygon, gt_polygon, pos_matched_idx)
                 losses.update(dict(roi_mask_loss=mask_loss, roi_edge_loss=edge_loss,
                                    roi_vertex_loss=vertex_loss, roi_polygon_loss=polygon_loss))
             else:

@@ -55,30 +55,34 @@ class PolyGNN(nn.Module):
         """
         pred_polys: in scale [0,1]
         """
+        pred_poly = []
+        adj = []
+        for poly in init_polys:
+            poly = poly.unsqueeze(0)
+            for i in range(self.coarse_to_fine_steps):
+                if i == 0:
+                    component = utils.prepare_gcn_component(poly.numpy(),
+                                                            [self.feature_grid_size],
+                                                            poly.size()[1],
+                                                            n_adj=self.n_adj)
 
-        for i in range(self.coarse_to_fine_steps):
-            if i == 0:
-                component = utils.prepare_gcn_component(init_polys.numpy(),
-                                                        [self.feature_grid_size],
-                                                        init_polys.size()[1],
-                                                        n_adj=self.n_adj)
+                    poly = poly.to(device)
+                    adjacent = component['adj_matrix'].to(device)
+                    poly_idx = component['feature_indexs'].to(device)
 
-                init_polys = init_polys.to(device)
-                adjacent = component['adj_matrix'].to(device)
-                init_poly_idx = component['feature_indexs'].to(device)
+                    cnn_feature = self.sampling(poly_idx, feature)
+                    input_feature = torch.cat((cnn_feature, poly), 2)  # Hypothesis Graph Features
 
-                cnn_feature = self.sampling(init_poly_idx, feature)
-                input_feature = torch.cat((cnn_feature, init_polys), 2)  # Hypothesis Graph Features
+                else:
+                    poly = gcn_pred_poly
+                    cnn_feature = self.interpolated_sum(feature, poly, [self.feature_grid_size])
+                    input_feature = torch.cat((cnn_feature, poly), 2)
 
-            else:
-                init_polys = gcn_pred_poly
-                cnn_feature = self.interpolated_sum(feature, init_polys, [self.feature_grid_size])
-                input_feature = torch.cat((cnn_feature, init_polys), 2)
-
-            gcn_pred = self.gnn[i].forward(input_feature, adjacent)
-            gcn_pred_poly = init_polys.to(device) + gcn_pred
-
-        return gcn_pred_poly, adjacent
+                gcn_pred = self.gnn[i].forward(input_feature, adjacent)
+                gcn_pred_poly = poly.to(device) + gcn_pred
+            pred_poly.append(gcn_pred_poly)
+            adj.append(adjacent) 
+        return pred_poly, adj
 
     def interpolated_sum(self, cnns, coords, grids):
 
