@@ -197,7 +197,6 @@ def get_initial_points(cp_num):
 
 def sample_points_from_mask_contours(masks):
     '''computes the contour from segmentation mask; then samples from them.'''
-    # detect the contours on the binary image using cv2.CHAIN_APPROX_NONE
     batch_size = masks.shape[0]
     poly = []
     for i in range(batch_size):
@@ -205,13 +204,13 @@ def sample_points_from_mask_contours(masks):
         mask = np.uint8((mask > 0.5))
         # Using marching squares
         contours = skimage.measure.find_contours(mask, 0.5, fully_connected='low', positive_orientation='high')
-        # Simplify contours a tiny bit using Douglas-Peucker algorithm:
+        # Simplify contours a tiny bit using Douglas-Peucker algorithm
         contours = [skimage.measure.approximate_polygon(contour, tolerance=0.01) for contour in contours]
         lengths = [contour.shape[0] for contour in contours]
         if len(lengths) > 0:
             longest_idx = np.array(lengths).argmax()
         # contours = np.concatenate(np.array(contours))
-        poly.append(torch.from_numpy(np.array(contours[longest_idx])))  # get the longest one
+        poly.append(torch.from_numpy(np.array(contours[longest_idx] / mask.shape[-1])).float())  # get the longest one and normalize it to [0, 1]
     return poly
 
 
