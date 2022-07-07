@@ -298,7 +298,7 @@ def nearest_vertex_matching(poly_fewer, poly_more):
     for fewer_idx in range(poly_fewer.shape[0]):
         # iteratively remove the col and row corresponding to the min distance
         min_idx = l2_dist.argmin()
-        min_row = min_idx // l2_dist.shape[1]
+        min_row = torch.div(min_idx, l2_dist.shape[1], rounding_mode='floor')
         min_col = min_idx - min_row * l2_dist.shape[1]
         matching_idx[fewer_idx] = min_col
         distance += l2_dist[min_row, min_col]
