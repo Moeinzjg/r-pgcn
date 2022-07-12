@@ -3,7 +3,7 @@ import torch.nn.functional as F
 from torch import nn
 import numpy as np
 
-from .utils import Matcher, BalancedPositiveNegativeSampler, roi_align, get_initial_points
+from .utils import Matcher, BalancedPositiveNegativeSampler, roi_align, get_initial_points, biprojection_loss
 from .box_ops import BoxCoder, box_iou, process_box, nms
 
 
@@ -82,40 +82,17 @@ def poly_matching_loss(pnum, pred, gt, matched_idx, loss_type="L1"):
     # print(f'matched idx max: {matched_idx.max()}, matched idx min: {matched_idx2.min()}')
     # print(f'matched idx: {matched_idx}')
     # print('--------------------------')
+    torch.autograd.set_detect_anomaly(True)
     gt = torch.gather(gt, 0, matched_idx)
+    bs = pred.size()[0]
+    loss = torch.ones(bs) * 100.0
+    for i in range(bs):
+        pr = pred[i]
+        g = gt[i]
+        distance, matching_idx = biprojection_loss(pr, g)
+        loss[i] = distance
 
-    batch_size = pred.size()[0]
-    pidxall = np.zeros(shape=(batch_size, pnum, pnum), dtype=np.int32)
-
-    for b in range(batch_size):
-        for i in range(pnum):
-            pidx = (np.arange(pnum) + i) % pnum
-            pidxall[b, i] = pidx
-
-    pidxall = torch.from_numpy(np.reshape(pidxall, newshape=(batch_size, -1))).to(pred.device)
-
-    feature_id = pidxall.unsqueeze_(2).long().expand(pidxall.size(0), pidxall.size(1), gt.size(2)).detach()
-    gt_expand = torch.gather(gt, 1, feature_id).view(batch_size, pnum, pnum, 2)
-
-    pred_expand = pred.unsqueeze(1)
-
-    dis = pred_expand - gt_expand
-
-    if loss_type == "L2":
-        dis = (dis ** 2).sum(3).sqrt().sum(2)
-    elif loss_type == "L1":
-        dis = torch.abs(dis).sum(3).sum(2)
-
-    min_dis, min_id = torch.min(dis, dim=1, keepdim=True)
-    min_id = torch.from_numpy(min_id.data.cpu().numpy()).to(pred.device)
-    min_gt_id_to_gather = min_id.unsqueeze_(2).unsqueeze_(3).long().expand(min_id.size(0),
-                                                                           min_id.size(1),
-                                                                           gt_expand.size(2),
-                                                                           gt_expand.size(3))
-
-    gt_right_order = torch.gather(gt_expand, 1, min_gt_id_to_gather).view(batch_size, pnum, 2)  # TODO: check the application of this
-
-    return gt_right_order, 0.25 * torch.mean(min_dis)
+    return matching_idx, torch.mean(loss)
 
 
 class RoIHeads(nn.Module):

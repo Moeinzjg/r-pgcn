@@ -223,3 +223,64 @@ def min_dist_point2poly(point, poly):
         if torch.sqrt(A*A + B*B) > 0:
             dis[i] = torch.abs(A * point[0] + B * point[1] + C)/torch.sqrt(A*A + B*B)
     return dis.min()
+
+
+# Losses useful for the polygon similarity loss and their associated functions
+def nearest_vertex_matching(poly_fewer, poly_more):
+    '''Returns the matching (poly_fewer -> poly_more) index which shows each
+       of the vertices in poly_fewer matches which of the ones in poly_more. Thus, the
+       size would be the same as poly_fewer in the first dimension.
+    '''
+    l2_dist = torch.cdist(poly_fewer, poly_more, p=2)
+    matching_idx = torch.ones((poly_fewer.shape[0])) * 1000
+    distance = 0.0
+    l2d = l2_dist.detach().clone()
+    
+    for fewer_idx in range(poly_fewer.shape[0]):
+        # iteratively remove the col and row corresponding to the min distance
+        min_idx = l2d.argmin()
+        min_row = torch.div(min_idx, l2_dist.shape[1], rounding_mode='floor')
+        min_col = min_idx - min_row * l2_dist.shape[1]
+        matching_idx[fewer_idx] = min_col
+        distance = distance + l2_dist[min_row, min_col]
+        l2d[min_row, :] = 100.0
+        l2d[:, min_col] = 100.0
+
+    return distance, matching_idx
+
+
+def biprojection_loss(pred, gt):
+    '''Measures the difference between predicted and ground truth polygon vertices.
+       Assuming that we have two polygons Pm with more vertices and Pf with fewer ones.
+       First, it finds the one-to-one matching for all the vertices in Pf, then computes the distance
+       between each left vertex in Pm and the projection of that vertex on the closest edge in Pf.
+    '''
+    if pred.shape[0] <= gt.shape[0]:
+        poly_fewer, poly_more = pred, gt
+    else:
+        poly_fewer, poly_more = gt, pred
+    
+    # find the matching for vertices in Pf
+    distance, matching_idx = nearest_vertex_matching(poly_fewer, poly_more)
+
+    # find the min distance of each unmatched vertex in Pm to the edges of Pm
+    for idx in range(poly_more.shape[0]):
+        if idx in matching_idx.tolist():
+            continue
+        distance += min_dist_point2poly(poly_more[idx, :], poly_fewer)  # TODO: check this function   #FIXME: vertex number in prediction is still 16
+    distance /= poly_more.shape[0]
+    return distance, matching_idx
+
+
+def relative_shape_loss(pred, gt, matching_idx):
+    ''' Penalizes the matched line segments which 
+        are not parallel with each other. The matching
+        is inherited from vertex matching in the bi-projection
+        loss. The sine measure is calculated for directional 
+        vectors of two matched segments.
+    '''
+    if pred.shape[0] <= gt.shape[0]:
+        poly_fewer, poly_more = pred, gt
+    else:
+        poly_fewer, poly_more = gt, pred
+    pass
