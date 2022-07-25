@@ -280,12 +280,13 @@ class COCODataset(GeneralizedDataset):
                 labels.append(ann["category_id"])
 
             boxes = torch.tensor(boxes, dtype=torch.float32)
-            boxes = self.convert_to_xyxy(boxes)
-            labels = torch.tensor(labels)
-            masks = torch.stack(masks)
-            edge_masks = torch.stack(edge_masks)
-            vertex_masks = torch.stack(vertex_masks)
-            polygons = torch.tensor(np.array(polygons), dtype=torch.float32)
+            if len(boxes) > 0:
+                boxes = self.convert_to_xyxy(boxes)
+                labels = torch.tensor(labels)
+                masks = torch.stack(masks)
+                edge_masks = torch.stack(edge_masks)
+                vertex_masks = torch.stack(vertex_masks)
+                polygons = torch.tensor(np.array(polygons), dtype=torch.float32)
 
         target = dict(image_id=torch.tensor([img_id]), boxes=boxes, labels=labels,
                       masks=masks, edges=edge_masks, vertices=vertex_masks,
