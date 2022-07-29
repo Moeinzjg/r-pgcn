@@ -28,7 +28,7 @@ def main(args):
     # -------------------------------------------------------------------------- #
 
     print(args)
-    num_classes = max(d_train.dataset.classes) + 1  # including background class
+    num_classes = len(d_train.dataset.classes) + 1  # including background class
     if 'fpn' in args.backbone:
         backbone_name = re.findall('(.*?)_fpn', args.backbone)[0]
         model = pmr.maskrcnn_resnet_fpn(pretrained=False, num_classes=num_classes,
