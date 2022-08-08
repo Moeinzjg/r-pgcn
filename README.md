@@ -44,6 +44,12 @@ stats[12] = _summarize(0, iouThr=.5, maxDets=self.params.maxDets[2])
 stats[13] = _summarize(0, iouThr=.75, maxDets=self.params.maxDets[2]) 
 ```
 
+You also need to install lydorn utils by cloning and installing the following repository:
+```
+cd ..
+git clone https://github.com/Lydorn/lydorn_utils.git
+```
+
 ## Datasets
 
 This repository supports SpaceNet dataset in COCO format.
