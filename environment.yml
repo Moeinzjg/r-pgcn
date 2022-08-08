@@ -62,6 +62,7 @@ dependencies:
   - python_abi=3.8=2_cp38
   - pytorch=1.10.1=py3.8_cuda11.3_cudnn8.2.0_0
   - pytorch-mutex=1.0=cuda
+  - readline=8.1=h46c0cb4_0
   - setuptools=60.5.0=py38h578d9bd_0
   - six=1.16.0=pyh6c4a22f_0
   - sqlite=3.37.0=h9cd32fc_0
@@ -87,5 +88,7 @@ dependencies:
     - protobuf==3.19.3
     - pyparsing==3.0.6
     - python-dateutil==2.8.2
+    - scipy==1.9.0
+    - shapely==1.8.2
     - tensorboardx==2.4.1
-prefix: /opt/conda/envs/rpgcn_mine
+prefix: /home/moein/anaconda3/envs/rpgcn
