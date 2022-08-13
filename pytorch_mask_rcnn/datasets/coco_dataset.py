@@ -284,6 +284,7 @@ class COCODataset(GeneralizedDataset):
                 mask = torch.tensor(mask, dtype=torch.uint8)
                 poly = ann['segmentation'][0]
                 box = self.expand_bbox(ann['bbox'], mask.shape)
+                label = 1 if (ann["category_id"] == 100) else 0
 
                 # sanity check: if it is a real polygon in image or not
                 if self.poly_check(poly, mask.shape) == False:
@@ -306,7 +307,7 @@ class COCODataset(GeneralizedDataset):
 
                 boxes.append(box)
                 masks.append(mask)
-                labels.append(ann["category_id"])
+                labels.append(label)
 
             boxes = torch.tensor(boxes, dtype=torch.float32)
             boxes = self.convert_to_xyxy(boxes)

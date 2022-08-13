@@ -23,10 +23,10 @@ def main(args):
 
     if 'fpn' in args.backbone:
         backbone_name = re.findall('(.*?)_fpn', args.backbone)[0]
-        model = pmr.maskrcnn_resnet_fpn(pretrained=False, num_classes=max(ds.classes) + 1,
+        model = pmr.maskrcnn_resnet_fpn(pretrained=False, num_classes= len(ds.classes) + 1,
                                         pretrained_backbone=True, backbone_name=backbone_name).to(device)
     else:
-        model = pmr.maskrcnn_resnet50(False, max(ds.classes) + 1, pretrained_backbone=True).to(device)
+        model = pmr.maskrcnn_resnet50(False, len(ds.classes) + 1, pretrained_backbone=True).to(device)
 
     model.eval()
     model.head.score_thresh = 0.5
